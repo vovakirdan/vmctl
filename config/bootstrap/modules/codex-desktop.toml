@@ -1,0 +1,24 @@
+name = "codex-desktop"
+description = "Official ChatGPT desktop app with Codex; Ubuntu 24.04/26.04 or Debian 13; sign in manually"
+dependencies = ["ai-tools"]
+group = "ai-desktop"
+desktop_only = true
+default_version = "latest"
+
+[implementations."ubuntu:noble"]
+scripts = [{file = "desktop-deb-install.sh", args = ["chatgpt"]}]
+
+[implementations."ubuntu:24.04"]
+scripts = [{file = "desktop-deb-install.sh", args = ["chatgpt"]}]
+
+[implementations."ubuntu:resolute"]
+scripts = [{file = "desktop-deb-install.sh", args = ["chatgpt"]}]
+
+[implementations."ubuntu:26.04"]
+scripts = [{file = "desktop-deb-install.sh", args = ["chatgpt"]}]
+
+[implementations."debian:trixie"]
+scripts = [{file = "desktop-deb-install.sh", args = ["chatgpt"]}]
+
+[implementations."debian:13"]
+scripts = [{file = "desktop-deb-install.sh", args = ["chatgpt"]}]

@@ -1,0 +1,51 @@
+name = "ai-tools"
+description = "Shared AI agent prerequisites: downloads, Git and per-user command PATH"
+group = "ai-cli"
+
+[implementations.debian]
+packages = ["ca-certificates", "curl", "git", "bash"]
+[[implementations.debian.files]]
+path = "/etc/profile.d/vmctl-ai-tools.sh"
+owner = "root:root"
+permissions = "0644"
+content = '''
+# vmctl: optional AI commands for the configured cloud user.
+if [ "$(id -un)" = "{username}" ]; then
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*) ;;
+        *) export PATH="$HOME/.local/bin:$PATH" ;;
+    esac
+fi
+'''
+
+[implementations.rhel]
+packages = ["ca-certificates", "curl", "git", "bash"]
+[[implementations.rhel.files]]
+path = "/etc/profile.d/vmctl-ai-tools.sh"
+owner = "root:root"
+permissions = "0644"
+content = '''
+# vmctl: optional AI commands for the configured cloud user.
+if [ "$(id -un)" = "{username}" ]; then
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*) ;;
+        *) export PATH="$HOME/.local/bin:$PATH" ;;
+    esac
+fi
+'''
+
+[implementations.alpine]
+packages = ["ca-certificates", "curl", "git", "bash"]
+[[implementations.alpine.files]]
+path = "/etc/profile.d/vmctl-ai-tools.sh"
+owner = "root:root"
+permissions = "0644"
+content = '''
+# vmctl: optional AI commands for the configured cloud user.
+if [ "$(id -un)" = "{username}" ]; then
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*) ;;
+        *) export PATH="$HOME/.local/bin:$PATH" ;;
+    esac
+fi
+'''

@@ -1,0 +1,12 @@
+name = "aider"
+description = "Aider in an isolated uv tool environment with managed Python 3.12; manual provider setup"
+group = "ai-cli"
+dependencies = ["ai-tools", "python"]
+default_version = "latest"
+
+[implementations.debian]
+scripts = [{file = "ai-aider-install.sh", args = ["{username}", "aider-chat", "{version}", "python3.12"]}]
+
+[implementations.rhel]
+scripts = [{file = "ai-aider-install.sh", args = ["{username}", "aider-chat", "{version}", "python3.12"]}]
+# Alpine is not offered: Aider's managed Python/scientific wheels have not been validated on musl.

@@ -1,3 +1,5 @@
 [profiles]
 surge-dev = ["base", "rust", "node", "go", "python", "llvm", "cmake"]
 full-dev = ["base", "rust", "node", "go", "python", "docker", "llvm", "cmake"]
+ai-cli = ["codex", "claude", "opencode", "gemini", "aider"]
+ai-desktop = ["codex-desktop", "claude-desktop", "opencode-desktop"]

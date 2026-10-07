@@ -62,7 +62,9 @@ class CloudInitRenderer:
                 if isinstance(module, Module)
                 else ""
             )
-            if version and not re.fullmatch(r"[a-zA-Z0-9_.+-]{1,128}", version):
+            if version and (
+                version.startswith("-") or not re.fullmatch(r"[a-zA-Z0-9_.+-]{1,128}", version)
+            ):
                 raise VmctlError(f"Invalid version for module {module.name}")
             if isinstance(module, Module) and module.name in versions:
                 version_fields = (

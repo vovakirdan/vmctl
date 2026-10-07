@@ -1,0 +1,11 @@
+name = "opencode"
+description = "OpenCode v2 CLI from the official @opencode/cli npm package; manual provider setup"
+group = "ai-cli"
+dependencies = ["ai-tools", "node"]
+default_version = "latest"
+
+[implementations.debian]
+scripts = [{file = "ai-npm-install.sh", args = ["{username}", "@opencode/cli", "{version}", "opencode"]}]
+
+[implementations.rhel]
+scripts = [{file = "ai-npm-install.sh", args = ["{username}", "@opencode/cli", "{version}", "opencode"]}]

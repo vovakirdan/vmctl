@@ -6,7 +6,7 @@ from ipaddress import IPv4Address
 from typing import Literal, Protocol
 
 from vmctl.config import Preset, Template
-from vmctl.models import VM, CreateRequest, CreateResult, Resources, VMDetails, VMStats
+from vmctl.models import VM, CreateRequest, CreateResult, ModuleGroup, Resources, VMDetails, VMStats
 
 Progress = Callable[[str], None]
 LifecycleAction = Literal["start", "shutdown", "reboot"]
@@ -61,6 +61,7 @@ class CatalogItem:
     templates: tuple[str, ...]
     dependencies: tuple[str, ...] = ()
     members: tuple[str, ...] = ()
+    group: ModuleGroup = "development"
 
 
 @dataclass(frozen=True)

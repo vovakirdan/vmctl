@@ -25,7 +25,7 @@ def details_text(details: VMDetails) -> str:
         f"Desktop: {'yes' if details.desktop else 'no' if details.desktop is False else 'unknown'}",
         "",
         "System features: " + (", ".join(details.system_features) or "none / unknown"),
-        "Development modules: " + (", ".join(details.modules) or "none / unknown"),
+        "Optional modules: " + (", ".join(details.modules) or "none / unknown"),
     ]
     if details.addresses:
         lines.append(
@@ -48,7 +48,7 @@ def preview_text(preview: CreatePreview) -> str:
             f"CPU: {preview.resources.cpu} vCPU   RAM: {preview.resources.memory_mib / 1024:g} GiB   Disk: {max(preview.resources.disk_gib, preview.template_disk_gib)} GiB",
             "Disk is never shrunk; larger template disks are retained.",
             "System features: " + (", ".join(preview.system_features) or "none"),
-            "Development modules: " + (", ".join(preview.modules) or "none"),
+            "Optional modules: " + (", ".join(preview.modules) or "none"),
             f"Cloud-init user: {preview.username}",
             "Desktop password will be requested."
             if preview.requires_desktop_password

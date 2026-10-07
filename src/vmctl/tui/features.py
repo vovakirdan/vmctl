@@ -1,4 +1,4 @@
-"""Described system and development choices loaded from the worker catalog."""
+"""Described system and optional module groups loaded from the worker catalog."""
 
 from textual import on
 from textual.app import ComposeResult
@@ -24,15 +24,32 @@ class FeatureChoices(Vertical):
         yield Static("Guest integration and desktop access. Defaults follow the selected template.")
         for item in self.selection.catalog.system_features:
             yield from self.choice(item, "system")
-        yield Label("Development modules", classes="section-title")
-        yield Static("Optional tools. Leave unchecked for clean compatibility-test VMs.")
-        for item in self.selection.catalog.modules:
-            yield from self.choice(item, "dev")
+        for group, title, description in (
+            (
+                "development",
+                "Development modules",
+                "Optional tools. Leave unchecked for clean compatibility-test VMs.",
+            ),
+            (
+                "ai-cli",
+                "AI CLI agents",
+                "Optional terminal agents. Sign in inside the guest after installation.",
+            ),
+            (
+                "ai-desktop",
+                "AI desktop apps",
+                "Optional GUI apps for supported desktop templates. Sign in inside the guest.",
+            ),
+        ):
+            items = [item for item in self.selection.catalog.modules if item.group == group]
+            if items:
+                yield Label(title, id=f"group-{group}", classes="section-title")
+                yield Static(description)
+                for item in items:
+                    yield from self.choice(item, "dev")
         if self.selection.catalog.profiles:
-            yield Label("Development profiles", classes="section-title")
-            yield Static(
-                "Compositions of the same development modules; dependencies are deduplicated."
-            )
+            yield Label("Profiles", id="bootstrap-profiles", classes="section-title")
+            yield Static("Compositions of optional modules; dependencies are deduplicated.")
             for item in self.selection.catalog.profiles:
                 yield from self.choice(item, "profile")
         yield Static("", id="features-error", markup=False)

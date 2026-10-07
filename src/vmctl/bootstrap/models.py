@@ -7,7 +7,7 @@ from pydantic import Field, ValidationError, model_validator
 
 from vmctl.config import Configuration, StrictModel, Template, read_toml
 from vmctl.errors import VmctlError
-from vmctl.models import validate_name
+from vmctl.models import ModuleGroup, validate_name
 
 
 class Script(StrictModel):
@@ -55,6 +55,13 @@ class Definition(StrictModel):
 class Module(Definition):
     category: ClassVar[str] = "Module"
     default_version: str = ""
+    group: ModuleGroup = "development"
+    desktop_only: bool = False
+
+    def implementation(self, template: Template) -> Implementation:
+        if self.desktop_only and not template.desktop:
+            raise VmctlError(f"Module {self.name!r} requires a desktop template")
+        return super().implementation(template)
 
 
 def script_path(config: Configuration, relative: str) -> Path:

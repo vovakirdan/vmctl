@@ -1,0 +1,11 @@
+name = "gemini"
+description = "Google Gemini CLI (Node.js 20+); installed for the cloud user, with manual sign-in"
+group = "ai-cli"
+dependencies = ["ai-tools", "node"]
+default_version = "latest"
+
+[implementations.debian]
+scripts = [{file = "ai-npm-install.sh", args = ["{username}", "@google/gemini-cli", "{version}", "gemini"]}]
+
+[implementations.rhel]
+scripts = [{file = "ai-npm-install.sh", args = ["{username}", "@google/gemini-cli", "{version}", "gemini"]}]

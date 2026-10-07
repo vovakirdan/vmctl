@@ -1,0 +1,26 @@
+name = "claude"
+description = "Claude Code native stable installer; no Node.js dependency, with manual sign-in"
+group = "ai-cli"
+dependencies = ["ai-tools"]
+default_version = "stable"
+
+[implementations.debian]
+scripts = [{file = "ai-claude-install.sh", args = ["{username}", "{version}"]}]
+
+[implementations.rhel]
+scripts = [{file = "ai-claude-install.sh", args = ["{username}", "{version}"]}]
+
+[implementations.alpine]
+# The guest's existing community repository must provide ripgrep.
+packages = ["libgcc", "libstdc++", "ripgrep"]
+scripts = [{file = "ai-claude-install.sh", args = ["{username}", "{version}"]}]
+[[implementations.alpine.files]]
+path = "/etc/profile.d/vmctl-claude.sh"
+owner = "root:root"
+permissions = "0644"
+content = '''
+# Claude's musl build uses the distribution ripgrep rather than its bundled binary.
+if [ "$(id -un)" = "{username}" ]; then
+    export USE_BUILTIN_RIPGREP=0
+fi
+'''

@@ -56,7 +56,11 @@ def build_catalog(config: Configuration) -> Catalog:
         presets=config.presets,
         modules=tuple(
             CatalogItem(
-                name, module.description, development_support(name), tuple(module.dependencies)
+                name,
+                module.description,
+                development_support(name),
+                tuple(module.dependencies),
+                group=module.group,
             )
             for name, module in sorted(modules.items())
         ),

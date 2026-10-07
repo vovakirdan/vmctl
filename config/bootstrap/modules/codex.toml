@@ -1,0 +1,11 @@
+name = "codex"
+description = "OpenAI Codex CLI; installed for the cloud user, with manual sign-in afterwards"
+group = "ai-cli"
+dependencies = ["ai-tools", "node"]
+default_version = "latest"
+
+[implementations.debian]
+scripts = [{file = "ai-npm-install.sh", args = ["{username}", "@openai/codex", "{version}", "codex"]}]
+
+[implementations.rhel]
+scripts = [{file = "ai-npm-install.sh", args = ["{username}", "@openai/codex", "{version}", "codex"]}]

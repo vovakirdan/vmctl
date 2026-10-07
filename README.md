@@ -11,7 +11,7 @@ NAT, WireGuard and public bridge configuration are not modified by this tool.
 
 ## Quickstart (Linux / WSL)
 
-Use the same **0.4.0** release for the workstation client and server worker.
+Use the same **0.5.0** release for the workstation client and server worker.
 If the worker is not installed yet, follow [server installation](#install-the-executor-on-the-proxmox-host)
 and [host prerequisites](#host-prerequisites) first.
 
@@ -152,7 +152,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Keep `/opt/vmctl` and server configuration owned by the administrator. The
 absolute worker path works without relying on a login shell's PATH. An existing
 wheel can be supplied to `uv tool install` instead of `.`. Install compatible
-versions on both sides; this release is **0.4.0**, with protocol version **1**.
+versions on both sides; this release is **0.5.0**, with protocol version **1**.
 
 `vmctl --local config init` installs the server TOML files, system features,
 development modules and guest scripts into `/etc/vmctl`. It never installs
@@ -343,21 +343,25 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 
 A wheel from `dist/` may replace `.` on both sides. Reinstalling and `config init`
 preserve existing settings; add new settings explicitly when needed. Version
-0.4.0 adds detected IPs, per-VM metrics, and Go/Python modules: update the worker
+0.5.0 adds optional AI CLI agents and Linux desktop apps with grouped selections: update the worker
 as well as the client. Reopen the shell after refreshing completion.
 
 `config init` adds the new module files and uv installer, but preserves your
 existing `/etc/vmctl/profiles.toml`. To extend an existing `surge-dev`, add `go`
 and `python` to its members on the server, then run `config validate`.
 New installations include them in `surge-dev` and `full-dev` automatically.
+The same preservation applies to the new `ai-cli` and `ai-desktop` aliases:
+add their compositions from [AI bootstrap](#ai-agents-and-desktop-apps) to an
+existing server `profiles.toml` if you want them. Individual module names work
+without those aliases. AI modules are not added to `surge-dev` or `full-dev`.
 
 If the checkout is only on your workstation, upload the wheel and reinstall the
 worker over your existing SSH alias. These commands assume root access through
 `pxmx` and uv installed at `/root/.local/bin/uv`; adjust that uv path if needed:
 
 ```sh
-scp dist/vmctl-0.4.0-py3-none-any.whl pxmx:/tmp/
-ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.4.0-py3-none-any.whl --python 3.12 --force --reinstall'
+scp dist/vmctl-0.5.0-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.5.0-py3-none-any.whl --python 3.12 --force --reinstall'
 ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
 vmctl config validate
 vmctl tui --read-only
@@ -407,7 +411,10 @@ The single creation form groups its controls by purpose:
 | Basic | VM name, template and resource preset |
 | Resources | CPU, memory and disk overrides; the template disk is never shrunk |
 | System features | Guest infrastructure, such as `qemu-agent` and `desktop-rdp`; template defaults are selected automatically |
-| Development modules and profiles | Optional tools and reusable compositions, such as `rust`, `node` or `surge-dev`; initially empty |
+| Development modules | Optional languages and utilities, such as `rust`, `node`, `go`, `python`; initially empty |
+| AI CLI agents | Optional terminal coding agents; required Node/Python dependencies are selected and locked automatically |
+| AI desktop apps | Optional official graphical apps; available only on compatible desktop templates |
+| Profiles | Compositions such as `surge-dev`, `ai-cli`, `ai-desktop`; dependencies are deduplicated |
 | Advanced | IP, local SSH public-key path, description, start after creation, SSH wait timeout and skipping desktop password setup |
 
 Each checkbox has a visible description from the server definition and explains
@@ -511,7 +518,7 @@ counters; live rates are available in the TUI.
 | `delete NAME_OR_VMID` | Confirm, stop, destroy and release managed resources |
 | `tui [--read-only]` | Terminal inventory, creation form and VM actions; optional browse/preview-only mode |
 | `templates` / `presets` | Available template names and resource defaults |
-| `bootstrap [--template NAME]` | Separate system features, development modules and profile aliases |
+| `bootstrap [--template NAME]` | Separate system features, development tools, AI agents, desktop apps and profiles |
 | `config init` / `config validate` | Initialize client settings / validate client and server definitions |
 | `COMMAND --help` | Detailed positional argument and option descriptions |
 
@@ -520,7 +527,7 @@ Common creation options:
 | Option | Meaning |
 | --- | --- |
 | `--start` / `--no-start` | Start after provisioning / leave powered off until first boot |
-| `--with rust,node` | Opt-in development tools; resolve and deduplicate dependencies |
+| `--with rust,node,codex` | Optional development/AI tools; resolve and deduplicate dependencies |
 | `--with-system NAME` | Add guest infrastructure features, independent of development tools |
 | `--without-system desktop-rdp` | Disable automatic desktop RDP; keep other template defaults |
 | `--cpu 16 --memory 48G --disk 160G` | Override preset resources; never shrink the template disk |
@@ -605,11 +612,11 @@ It removes only reservations matching that VM's MAC and vmctl-owned snippets.
 Ambiguous names require an explicit VMID. List hides templates and includes
 manually created VMs; unknown template/IP information is displayed as unknown.
 
-`--with` selects development modules and profiles. `--with-system` adds system
+`--with` selects optional development/AI modules and profiles. `--with-system` adds system
 features; `--without-system` disables them. Both system options accept a
 comma-separated list. Disabling a dependency while retaining a feature that
 requires it fails before cloning. The creation summary and `info` show system
-features and development modules separately.
+features and optional modules separately.
 
 Memory sizes accept MiB by default; disk sizes accept GiB by default. `M/G`
 and `MiB/GiB` use binary units. Disk requests must be whole GiB. A larger
@@ -628,9 +635,9 @@ against `connection.config_dir` (or `--config-dir` in direct host mode).
   config.toml              # Host, paths, network, storage, timeouts, binaries
   templates.toml           # Template VMIDs and OS information
   presets.toml             # Resource defaults
-  profiles.toml            # Compositions of development modules/profiles
+  profiles.toml            # Compositions of optional modules/profiles
   bootstrap/system/*.toml  # System features and automatic selection
-  bootstrap/modules/*.toml # Development modules and OS implementations
+  bootstrap/modules/*.toml # Development/AI modules and OS implementations
   bootstrap/scripts/*     # Optional guest-only scripts
 ```
 
@@ -649,6 +656,7 @@ For a new module, create `bootstrap/modules/debug-tools.toml`:
 name = "debug-tools"
 description = "Optional debugging utilities"
 dependencies = ["base"]
+group = "development"
 
 [implementations.debian]
 packages = ["gdb", "strace"]
@@ -660,6 +668,12 @@ packages = ["gdb", "strace"]
 [implementations.alpine]
 packages = ["gdb", "strace"]
 ```
+
+`group` is editable presentation metadata: `development` (the default for old
+definitions), `ai-cli`, or `ai-desktop`. Set `desktop_only = true` for a GUI module.
+Desktop eligibility is enforced by the domain implementation lookup, so CLI plans,
+TUI choices and rendering all use the same rule. OS/release support still comes
+from the module's implementation tables; no Python registration is required.
 
 Then run:
 
@@ -910,6 +924,91 @@ Guest bootstrap completion is **not verified**. To inspect a running guest:
 ```sh
 ssh vmadmin@10.210.0.105 'sudo cloud-init status --long'
 ```
+
+## AI agents and desktop apps
+
+AI tools are optional workload modules, separate from system features. Select
+individual names or a profile through `--with`; the TUI shows **AI CLI agents**
+and **AI desktop apps** separately from languages and utilities. Nothing in these
+groups is selected automatically for server or desktop VMs.
+
+![AI CLI agents with automatic dependencies](docs/screenshots/ai-cli.png)
+
+![Optional official AI desktop apps](docs/screenshots/ai-desktop.png)
+
+| Module | Installation and dependencies | Supplied guest support |
+| --- | --- | --- |
+| `codex` | `@openai/codex` with npm; requires `node` | Ubuntu/Debian, Rocky |
+| `claude` | Official native Claude Code installer; no Node dependency | Ubuntu/Debian, Rocky, Alpine |
+| `opencode` | Current OpenCode v2 `@opencode/cli` with npm; requires `node` | Ubuntu/Debian, Rocky |
+| `gemini` | `@google/gemini-cli` with npm; requires `node` | Ubuntu/Debian, Rocky |
+| `aider` | `aider-chat` in a user uv tool environment with Python 3.12 and pip; requires `python` | Ubuntu/Debian, Rocky |
+| `codex-desktop` | Official ChatGPT desktop app with Codex | Desktop Ubuntu 24.04/26.04 or Debian 13 |
+| `claude-desktop` | Official Claude Desktop Linux beta, signed apt repository | Desktop Ubuntu 22.04/24.04/25.10/26.04 or Debian 12/13 |
+| `opencode-desktop` | Official OpenCode stable `.deb` | Desktop Ubuntu 24.04/26.04 or Debian 13 |
+
+These methods follow [OpenAI CLI guidance](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex),
+[Claude Code setup](https://code.claude.com/docs/en/setup),
+[OpenCode v2](https://opencode.ai/v2/docs),
+[Gemini installation](https://geminicli.com/docs/get-started/installation/), and
+[Aider's uv method](https://aider.chat/docs/install.html#install-with-uv).
+Desktop packages come from [OpenAI's Linux app guide](https://learn.chatgpt.com/docs/linux/linux-app),
+[Claude Desktop](https://support.claude.com/en/articles/10065433-install-claude-desktop),
+and [OpenCode downloads](https://opencode.ai/download). Supported aliases are
+declared in each TOML implementation table; use accurate template `distro`
+and `release` metadata. For example, OpenAI does not list Ubuntu 25.10 as a
+supported desktop release, so that combination is unavailable by default.
+
+```toml
+[profiles]
+ai-cli = ["codex", "claude", "opencode", "gemini", "aider"]
+ai-desktop = ["codex-desktop", "claude-desktop", "opencode-desktop"]
+```
+
+These aliases compose with development profiles. Selecting `codex`, `opencode`
+or `gemini` also selects `node`, installs it first, and prevents deselecting it
+while a chosen agent requires it. Shared prerequisites (`ai-tools`) and runtimes
+are installed once. Claude uses its native installer; desktop packages do not
+pull in Node. Unsupported GUI/OS or runtime combinations fail during planning.
+
+```sh
+vmctl bootstrap --template ubuntu-server
+vmctl bootstrap --template ubuntu-desktop
+vmctl create ai-work ubuntu-server normal --with codex,claude,opencode --dry-run
+vmctl create full-ai ubuntu-server large --with surge-dev,ai-cli --dry-run
+vmctl create ai-desk ubuntu-desktop normal --with ai-desktop --dry-run
+```
+
+Remove `--dry-run` to create and provision the selected VM. Agents install for
+the configured cloud user: npm uses a per-user prefix, Aider uses an isolated
+uv environment, and the native Claude installer runs without root privileges.
+Guest login PATH is written atomically. `latest` npm/tool versions and Claude's
+`stable` channel are editable defaults in module TOML; npm engine checks reject
+incompatible Node overrides. Alpine's native Claude needs its community
+repository for ripgrep and uses `USE_BUILTIN_RIPGREP=0` for the configured user.
+The supplied Node/Aider modules do not offer an Alpine implementation.
+
+After cloud-init completes, sign in or configure providers **inside the guest**
+as the cloud user. vmctl never copies workstation authentication, API keys,
+agent settings or login sessions into a clone, and it does not run a paid AI
+request or disable agent approvals. Desktop installers register the vendor
+package/menu launcher without starting the GUI app during cloud-init.
+Keep base templates free of saved agent logins and API keys.
+Example commands to run after connecting to the VM:
+
+```sh
+codex
+claude
+opencode
+gemini
+aider --help
+```
+
+For OpenCode, use `/connect` in its own interface. Start ChatGPT, Claude Desktop
+or OpenCode Desktop from the guest's application menu over your private RDP
+connection. Account and subscription requirements remain with each provider.
+Creation success still does not verify completed guest installation or login;
+inspect `sudo cloud-init status --long` in the guest.
 
 ## Storage and dnsmasq troubleshooting
 

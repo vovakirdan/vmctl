@@ -11,7 +11,7 @@ NAT, WireGuard и конфигурацию публичного bridge.
 
 ## Быстрый старт (Linux / WSL)
 
-Установите одинаковую версию **0.4.0** клиента и серверного исполнителя.
+Установите одинаковую версию **0.5.0** клиента и серверного исполнителя.
 Если исполнитель ещё не установлен, сначала выполните [установку на сервере](#установка-исполнителя-на-хосте-proxmox)
 и проверьте [требования к хосту](#требования-к-хосту).
 
@@ -156,7 +156,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Каталог `/opt/vmctl` и серверная конфигурация должны принадлежать администратору.
 Абсолютный путь исполнителя позволяет не зависеть от PATH login shell.
 Вместо `.` команде `uv tool install` можно передать готовый wheel. Установите
-совместимые версии с обеих сторон; текущая версия **0.4.0**, версия протокола **1**.
+совместимые версии с обеих сторон; текущая версия **0.5.0**, версия протокола **1**.
 
 `vmctl --local config init` устанавливает серверные TOML-файлы, системные
 возможности, модули разработки и гостевые скрипты в `/etc/vmctl`. `client.toml`
@@ -352,7 +352,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 
 Вместо `.` с обеих сторон можно передать wheel из `dist/`. Переустановка и
 `config init` сохраняют существующие настройки; новые поля добавляются явно.
-Версия 0.4.0 добавляет обнаружение IP, метрики отдельных VM и модули Go/Python,
+Версия 0.5.0 добавляет AI-агенты CLI и Linux desktop-приложения с отдельными группами,
 поэтому обновите не только клиент, но и сервер. После обновления дополнения
 откройте новый shell.
 
@@ -360,6 +360,10 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 существующий `/etc/vmctl/profiles.toml`. Чтобы расширить существующий `surge-dev`,
 добавьте `go` и `python` к его составу на сервере и выполните `config validate`.
 При новой установке они уже входят в `surge-dev` и `full-dev`.
+Это правило сохранения действует и для новых алиасов `ai-cli` и `ai-desktop`:
+при необходимости добавьте их состав из раздела [AI bootstrap](#ai-агенты-и-desktop-приложения)
+в существующий серверный `profiles.toml`. Отдельные имена модулей работают
+без алиасов. AI-модули не добавляются в `surge-dev` или `full-dev`.
 
 Если каталог проекта есть только на рабочем компьютере, передайте wheel
 на сервер и переустановите исполнитель через существующее имя подключения SSH.
@@ -367,8 +371,8 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 `/root/.local/bin/uv`; при необходимости укажите другой путь к uv:
 
 ```sh
-scp dist/vmctl-0.4.0-py3-none-any.whl pxmx:/tmp/
-ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.4.0-py3-none-any.whl --python 3.12 --force --reinstall'
+scp dist/vmctl-0.5.0-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.5.0-py3-none-any.whl --python 3.12 --force --reinstall'
 ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
 vmctl config validate
 vmctl tui --read-only
@@ -417,7 +421,10 @@ uv run vmctl tui
 | Основные | Имя VM, шаблон и пресет ресурсов |
 | Ресурсы | Переопределения CPU, памяти и диска; диск шаблона не уменьшается |
 | Системные возможности | Инфраструктура гостя, например `qemu-agent` и `desktop-rdp`; настройки шаблона выбираются автоматически |
-| Модули и профили разработки | Дополнительные инструменты и готовые наборы, например `rust`, `node` или `surge-dev`; изначально ничего не выбрано |
+| Модули разработки | Дополнительные языки и утилиты: `rust`, `node`, `go`, `python`; изначально ничего не выбрано |
+| AI CLI agents | Дополнительные терминальные агенты; необходимые Node/Python выбираются и блокируются автоматически |
+| AI desktop apps | Официальные графические приложения; доступны только на совместимых desktop-шаблонах |
+| Profiles | Композиции `surge-dev`, `ai-cli`, `ai-desktop`; зависимости разрешаются без повторов |
 | Дополнительные | IP, путь к локальному публичному SSH-ключу, описание, запуск после создания, ожидание SSH и пропуск пароля desktop-пользователя |
 
 Рядом с каждым чекбоксом видно описание из серверного определения и пояснение
@@ -528,7 +535,7 @@ Proxmox сообщает нагрузку выбранной VM: CPU относ�
 | `delete NAME_OR_VMID` | Подтверждение, остановка, удаление VM и освобождение управляемых ресурсов |
 | `tui [--read-only]` | Терминальный список VM, форма создания и действия; дополнительный режим просмотра и проверки плана |
 | `templates` / `presets` | Имена шаблонов и значения ресурсов по умолчанию |
-| `bootstrap [--template NAME]` | Отдельные списки системных возможностей, модулей и профилей разработки |
+| `bootstrap [--template NAME]` | Отдельные группы системных возможностей, инструментов разработки, AI-агентов, desktop-приложений и профилей |
 | `config init` / `config validate` | Создание настроек клиента / проверка клиентских и серверных определений |
 | `COMMAND --help` | Подробное описание аргументов и параметров |
 
@@ -537,7 +544,7 @@ Proxmox сообщает нагрузку выбранной VM: CPU относ�
 | Параметр | Значение |
 | --- | --- |
 | `--start` / `--no-start` | Запустить после настройки / оставить выключенной до первого запуска |
-| `--with rust,node` | Установить выбранные инструменты разработки и их зависимости без повторов |
+| `--with rust,node,codex` | Выбрать инструменты разработки/AI и их зависимости без повторов |
 | `--with-system NAME` | Добавить системные возможности гостя независимо от инструментов разработки |
 | `--without-system desktop-rdp` | Отключить автоматический desktop RDP, сохранив остальные настройки шаблона |
 | `--cpu 16 --memory 48G --disk 160G` | Переопределить ресурсы пресета; диск шаблона никогда не уменьшается |
@@ -626,11 +633,11 @@ Start, shutdown и reboot также принимают однозначное �
 Команда list скрывает шаблоны и показывает VM, созданные вручную; неизвестные
 данные о шаблоне или IP отображаются как `unknown`.
 
-`--with` выбирает модули и профили разработки. `--with-system` добавляет системные
+`--with` выбирает дополнительные модули разработки/AI и профили. `--with-system` добавляет системные
 возможности, `--without-system` отключает их. Оба системных флага принимают список
 через запятую. Если отключить зависимость, но оставить возможность, которой она
 нужна, create завершится ошибкой до клонирования. Итог создания и `info` показывают
-системные возможности и модули разработки отдельно.
+системные возможности и дополнительные модули отдельно.
 
 Размер памяти без суффикса задаётся в MiB, размер диска — в GiB. `M/G`
 и `MiB/GiB` обозначают двоичные единицы. Размер диска должен быть целым числом GiB.
@@ -651,9 +658,9 @@ Start, shutdown и reboot также принимают однозначное �
   config.toml              # Host, paths, network, storage, timeouts, binaries
   templates.toml           # Template VMIDs and OS information
   presets.toml             # Resource defaults
-  profiles.toml            # Compositions of development modules/profiles
+  profiles.toml            # Compositions of optional modules/profiles
   bootstrap/system/*.toml  # System features and automatic selection
-  bootstrap/modules/*.toml # Development modules and OS implementations
+  bootstrap/modules/*.toml # Development/AI modules and OS implementations
   bootstrap/scripts/*     # Optional guest-only scripts
 ```
 
@@ -672,6 +679,7 @@ disk_gib = 160
 name = "debug-tools"
 description = "Optional debugging utilities"
 dependencies = ["base"]
+group = "development"
 
 [implementations.debian]
 packages = ["gdb", "strace"]
@@ -683,6 +691,12 @@ packages = ["gdb", "strace"]
 [implementations.alpine]
 packages = ["gdb", "strace"]
 ```
+
+`group` — редактируемая группа отображения: `development` (по умолчанию для старых
+определений), `ai-cli` или `ai-desktop`. Для GUI-модуля задайте `desktop_only = true`.
+Проверка desktop выполняется при выборе реализации в доменном слое, поэтому
+планы CLI, варианты TUI и рендеринг используют одно правило. Поддержка ОС
+и release по-прежнему задаётся таблицами реализаций; регистрация в Python не нужна.
 
 Затем выполните:
 
@@ -947,6 +961,92 @@ snippet, поэтому создание VM не зависит от после�
 ```sh
 ssh vmadmin@10.210.0.105 'sudo cloud-init status --long'
 ```
+
+## AI-агенты и desktop-приложения
+
+AI-инструменты — дополнительные модули рабочей нагрузки, отдельно от системных
+возможностей. Выбирайте имена модулей или профиль через `--with`; TUI показывает
+**AI CLI agents** и **AI desktop apps** отдельно от языков и утилит. Ничего из этих
+групп не выбирается автоматически для серверных или desktop VM.
+
+![AI CLI agents с автоматическими зависимостями](docs/screenshots/ai-cli.png)
+
+![Дополнительные официальные AI desktop apps](docs/screenshots/ai-desktop.png)
+
+| Модуль | Установка и зависимости | Готовая поддержка гостевых ОС |
+| --- | --- | --- |
+| `codex` | `@openai/codex` через npm; требуется `node` | Ubuntu/Debian, Rocky |
+| `claude` | Официальный native installer Claude Code; Node не требуется | Ubuntu/Debian, Rocky, Alpine |
+| `opencode` | Текущий OpenCode v2 `@opencode/cli` через npm; требуется `node` | Ubuntu/Debian, Rocky |
+| `gemini` | `@google/gemini-cli` через npm; требуется `node` | Ubuntu/Debian, Rocky |
+| `aider` | `aider-chat` в пользовательском uv tool-окружении с Python 3.12 и pip; требуется `python` | Ubuntu/Debian, Rocky |
+| `codex-desktop` | Официальный ChatGPT desktop app с Codex | Desktop Ubuntu 24.04/26.04 или Debian 13 |
+| `claude-desktop` | Официальный Claude Desktop Linux beta, подписанный apt-репозиторий | Desktop Ubuntu 22.04/24.04/25.10/26.04 или Debian 12/13 |
+| `opencode-desktop` | Официальный stable `.deb` OpenCode | Desktop Ubuntu 24.04/26.04 или Debian 13 |
+
+Способы установки взяты из [официальной инструкции OpenAI CLI](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex),
+[Claude Code setup](https://code.claude.com/docs/en/setup),
+[OpenCode v2](https://opencode.ai/v2/docs),
+[установки Gemini](https://geminicli.com/docs/get-started/installation/)
+и [uv-установки Aider](https://aider.chat/docs/install.html#install-with-uv).
+Desktop-пакеты взяты из [Linux-инструкции OpenAI](https://learn.chatgpt.com/docs/linux/linux-app),
+[Claude Desktop](https://support.claude.com/en/articles/10065433-install-claude-desktop)
+и [загрузок OpenCode](https://opencode.ai/download). Поддерживаемые алиасы release
+заданы таблицами реализаций TOML; указывайте правильные `distro` и `release`
+шаблона. Например, OpenAI не указывает Ubuntu 25.10 среди поддерживаемых desktop
+версий, поэтому эта комбинация по умолчанию недоступна.
+
+```toml
+[profiles]
+ai-cli = ["codex", "claude", "opencode", "gemini", "aider"]
+ai-desktop = ["codex-desktop", "claude-desktop", "opencode-desktop"]
+```
+
+Алиасы сочетаются с профилями разработки. Выбор `codex`, `opencode` или `gemini`
+также выбирает `node`, устанавливает его первым и блокирует снятие выбора,
+пока выбранный агент в нём нуждается. Общие зависимости (`ai-tools`) и среды
+выполнения устанавливаются один раз. Claude использует native installer;
+desktop-пакеты не добавляют Node. Неподдерживаемые GUI/ОС или сочетания runtime
+отклоняются при проверке плана.
+
+```sh
+vmctl bootstrap --template ubuntu-server
+vmctl bootstrap --template ubuntu-desktop
+vmctl create ai-work ubuntu-server normal --with codex,claude,opencode --dry-run
+vmctl create full-ai ubuntu-server large --with surge-dev,ai-cli --dry-run
+vmctl create ai-desk ubuntu-desktop normal --with ai-desktop --dry-run
+```
+
+Уберите `--dry-run`, чтобы создать и настроить выбранную VM. Агенты устанавливаются
+для настроенного пользователя cloud-init: npm использует пользовательский prefix,
+Aider — изолированное окружение uv, native installer Claude выполняется без root.
+PATH для входа в гостя записывается атомарно. Версии npm/tool `latest` и канал
+Claude `stable` — редактируемые значения TOML. Проверка npm engines отклоняет
+несовместимые переопределения Node. Для native Claude в Alpine нужен репозиторий
+community с ripgrep и `USE_BUILTIN_RIPGREP=0` для настроенного пользователя.
+Готовые модули Node/Aider не предоставляют реализацию для Alpine.
+
+После завершения cloud-init войдите в аккаунты или настройте провайдеров
+**внутри гостя** от пользователя cloud-init. vmctl не копирует аутентификацию
+рабочего компьютера, API-ключи, настройки агентов и сессии входа в клон;
+не отправляет платные AI-запросы и не отключает подтверждения агентов.
+Desktop-установщики регистрируют пакет и пункт меню, не запуская GUI во время
+cloud-init. Не сохраняйте входы агентов и API-ключи в базовых шаблонах.
+Примеры команд после подключения к VM:
+
+```sh
+codex
+claude
+opencode
+gemini
+aider --help
+```
+
+Для OpenCode используйте `/connect` в его интерфейсе. ChatGPT, Claude Desktop
+и OpenCode Desktop запускаются из меню приложений гостя через ваше приватное
+RDP-подключение. Требования к аккаунту и подписке остаются у провайдеров.
+Успех create по-прежнему не подтверждает завершение установки или входа;
+проверяйте `sudo cloud-init status --long` внутри гостя.
 
 ## Устранение ошибок хранилища и dnsmasq
 

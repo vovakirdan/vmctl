@@ -1,0 +1,54 @@
+name = "claude-desktop"
+description = "Official Claude Desktop Linux beta; Ubuntu 22.04+ or Debian 12+; sign in manually"
+dependencies = ["ai-tools"]
+group = "ai-desktop"
+desktop_only = true
+default_version = "latest"
+
+[implementations."ubuntu:jammy"]
+packages = ["gnupg"]
+scripts = [{file = "claude-desktop-install.sh", args = []}]
+
+[implementations."ubuntu:22.04"]
+packages = ["gnupg"]
+scripts = [{file = "claude-desktop-install.sh", args = []}]
+
+[implementations."ubuntu:noble"]
+packages = ["gnupg"]
+scripts = [{file = "claude-desktop-install.sh", args = []}]
+
+[implementations."ubuntu:24.04"]
+packages = ["gnupg"]
+scripts = [{file = "claude-desktop-install.sh", args = []}]
+
+[implementations."ubuntu:questing"]
+packages = ["gnupg"]
+scripts = [{file = "claude-desktop-install.sh", args = []}]
+
+[implementations."ubuntu:25.10"]
+packages = ["gnupg"]
+scripts = [{file = "claude-desktop-install.sh", args = []}]
+
+[implementations."ubuntu:resolute"]
+packages = ["gnupg"]
+scripts = [{file = "claude-desktop-install.sh", args = []}]
+
+[implementations."ubuntu:26.04"]
+packages = ["gnupg"]
+scripts = [{file = "claude-desktop-install.sh", args = []}]
+
+[implementations."debian:bookworm"]
+packages = ["gnupg"]
+scripts = [{file = "claude-desktop-install.sh", args = []}]
+
+[implementations."debian:12"]
+packages = ["gnupg"]
+scripts = [{file = "claude-desktop-install.sh", args = []}]
+
+[implementations."debian:trixie"]
+packages = ["gnupg"]
+scripts = [{file = "claude-desktop-install.sh", args = []}]
+
+[implementations."debian:13"]
+packages = ["gnupg"]
+scripts = [{file = "claude-desktop-install.sh", args = []}]

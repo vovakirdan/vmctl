@@ -38,6 +38,7 @@ from vmctl.services.catalog import build_catalog
 from vmctl.tui.app import VmctlApp
 from vmctl.tui.create import CreateScreen
 from vmctl.tui.details import VMDetailsScreen
+from vmctl.tui.features import FeatureChoices
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -135,7 +136,13 @@ class DemoOperations:
         return self.data.presets
 
     def validate_config(self) -> ValidationSummary:
-        return ValidationSummary(5, 4, 2, 8, 2)
+        return ValidationSummary(
+            len(self.data.templates),
+            len(self.data.presets),
+            len(self.data.system_features),
+            len(self.data.modules),
+            len(self.data.profiles),
+        )
 
     def plan_create(self, request: CreateRequest) -> CreatePreview:
         raise VmctlError("Screenshot demo does not execute VM requests")
@@ -212,6 +219,15 @@ async def capture() -> None:
         create.query_one("#dev-go", Checkbox).scroll_visible(top=True, animate=False)
         await pilot.pause()
         save(app, "features")
+        choices = create.query_one(FeatureChoices)
+        choices.selection.toggle("codex", True, system=False)
+        choices.update_choices()
+        create.query_one("#group-ai-cli").scroll_visible(top=True, animate=False)
+        await pilot.pause()
+        save(app, "ai-cli")
+        create.query_one("#group-ai-desktop").scroll_visible(top=True, animate=False)
+        await pilot.pause()
+        save(app, "ai-desktop")
 
 
 if __name__ == "__main__":

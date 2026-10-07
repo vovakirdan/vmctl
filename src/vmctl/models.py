@@ -9,6 +9,8 @@ from pydantic import SecretStr
 
 from vmctl.errors import VmctlError
 
+ModuleGroup = Literal["development", "ai-cli", "ai-desktop"]
+
 
 def validate_name(name: str) -> str:
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", name) or name.endswith("-"):

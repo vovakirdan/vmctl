@@ -1,0 +1,24 @@
+name = "opencode-desktop"
+description = "Official OpenCode Desktop stable package; modern Ubuntu/Debian; connect providers manually"
+dependencies = ["ai-tools"]
+group = "ai-desktop"
+desktop_only = true
+default_version = "latest"
+
+[implementations."ubuntu:noble"]
+scripts = [{file = "desktop-deb-install.sh", args = ["opencode"]}]
+
+[implementations."ubuntu:24.04"]
+scripts = [{file = "desktop-deb-install.sh", args = ["opencode"]}]
+
+[implementations."ubuntu:resolute"]
+scripts = [{file = "desktop-deb-install.sh", args = ["opencode"]}]
+
+[implementations."ubuntu:26.04"]
+scripts = [{file = "desktop-deb-install.sh", args = ["opencode"]}]
+
+[implementations."debian:trixie"]
+scripts = [{file = "desktop-deb-install.sh", args = ["opencode"]}]
+
+[implementations."debian:13"]
+scripts = [{file = "desktop-deb-install.sh", args = ["opencode"]}]
