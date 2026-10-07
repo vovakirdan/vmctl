@@ -429,11 +429,16 @@ def tui(
         ).run()
 
 
-@app.command("list", help="List VMs with resources and managed IPs.")
+@app.command("list", help="List VMs with resources and reserved or detected IPv4 addresses.")
 def list_command(ctx: typer.Context) -> None:
     with present_errors():
         backend = operations(ctx)
-        table = Table("VMID", "Name", "Status", "Template / OS", "CPU", "RAM", "Managed IP")
+        table = Table("VMID", "Name", "Status", "Template / OS", "CPU", "RAM", "IP", "IP source")
+        # An ellipsized IP cannot be copied or used to connect to the VM.
+        table.columns[6].min_width = 15
+        table.columns[6].no_wrap = True
+        table.columns[7].min_width = 11
+        table.columns[7].no_wrap = True
         for details in backend.list():
             vm = details.vm
             cpu = int(details.config.get("cores", "1")) * int(details.config.get("sockets", "1"))
@@ -445,13 +450,14 @@ def list_command(ctx: typer.Context) -> None:
                 details.metadata.get("template", "unknown"),
                 str(cpu),
                 f"{memory / 1024:g} GiB",
-                str(details.ip) if details.ip else "unknown",
+                str(details.display_ip) if details.display_ip else "unknown",
+                details.ip_source,
             )
         console.print(table)
 
 
 @app.command(
-    help="Show VM configuration, managed IP, system features, development modules and desktop/RDP provisioning metadata. Credentials are redacted; guest readiness is not probed."
+    help="Show VM configuration, reserved/detected IP with its source, system features, development modules and desktop/RDP provisioning metadata. Credentials are redacted; guest readiness is not probed."
 )
 def info(
     ctx: typer.Context,
@@ -467,6 +473,12 @@ def info(
         table.add_row("Status", details.vm.status)
         table.add_row("Node", details.vm.node)
         table.add_row("Managed IP", str(details.ip) if details.ip else "unknown")
+        table.add_row("IP", str(details.display_ip) if details.display_ip else "unknown")
+        table.add_row("IP source", details.ip_source)
+        for address in details.addresses:
+            table.add_row("Observed IP", f"{address.address} ({address.source})")
+        for note in details.ip_notes:
+            table.add_row("IP discovery", note)
         table.add_row(
             "System features",
             ", ".join(details.system_features)
@@ -491,6 +503,34 @@ def info(
             table.add_row(key, "<redacted>" if key in {"cipassword", "sshkeys"} else value)
         for key, value in sorted(details.metadata.items()):
             table.add_row(f"vmctl.{key}", value)
+        console.print(table)
+
+
+@app.command(
+    help="Read one VM's CPU, memory, uptime and cumulative network/disk counters from Proxmox. Use tui for live rate graphs. No guest credentials or VM changes."
+)
+def stats(ctx: typer.Context, reference: VMReference) -> None:
+    with present_errors():
+        result = operations(ctx).stats(reference)
+        table = Table("Property", "Value", title=f"VM {result.vm.vmid} · {result.vm.name}")
+        table.add_row("Status", result.vm.status)
+        table.add_row(
+            "CPU (cached VM sample)",
+            f"{result.cpu_percent:.1f}%" if result.cpu_percent is not None else "unavailable",
+        )
+        for label, amount in (
+            ("Memory (host-reported)", result.memory_bytes),
+            ("Memory limit", result.memory_total_bytes),
+            ("Network received (total)", result.network_in_bytes),
+            ("Network transmitted (total)", result.network_out_bytes),
+            ("Disk read (total)", result.disk_read_bytes),
+            ("Disk written (total)", result.disk_write_bytes),
+        ):
+            table.add_row(label, f"{amount:,} bytes" if amount is not None else "unavailable")
+        table.add_row(
+            "Uptime",
+            f"{result.uptime_seconds}s" if result.uptime_seconds is not None else "unavailable",
+        )
         console.print(table)
 
 

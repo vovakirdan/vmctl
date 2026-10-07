@@ -120,6 +120,8 @@ class FakeRunner:
                 )
             if endpoint.endswith("/status"):
                 return CommandResult('{"active": 1}')
+            if endpoint.endswith("/agent/network-get-interfaces"):
+                return CommandResult('{"result": []}')
         if args[0] == "pvesm":
             return CommandResult(str(self.root / "snippets" / args[2].split("/")[-1]) + "\n")
         if args[0] == "qm":

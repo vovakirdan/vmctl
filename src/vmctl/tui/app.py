@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from datetime import datetime
+from ipaddress import IPv4Address
 from pathlib import Path
 
 from textual import events, on
@@ -15,8 +16,11 @@ from vmctl.errors import UncertainOperationError, UnknownOutcomeError
 from vmctl.models import CreateResult, VMDetails
 from vmctl.operations import ActionPreview, Catalog, DeletePreview, LifecycleAction, Operations
 from vmctl.tui.create import CreateScreen
+from vmctl.tui.details import VMDetailsScreen
 from vmctl.tui.dialogs import ConfirmScreen, TextScreen
 from vmctl.tui.formatting import details_text, error_text, result_text
+from vmctl.tui.table import VMTable
+from vmctl.utils.clipboard import copy_native
 
 
 class DashboardScreen(Screen[None]):
@@ -75,7 +79,7 @@ class VmctlApp(App[None]):
         yield Static("Connecting to worker...", id="connection", markup=False)
         yield Input(placeholder="Search by name, VMID, template or IP", id="search")
         with Horizontal(id="dashboard"):
-            yield DataTable(id="vm-table", cursor_type="row", zebra_stripes=True)
+            yield VMTable(id="vm-table", cursor_type="row", zebra_stripes=True)
             with Vertical(id="details-panel"):
                 yield Static("Select a VM to see its details.", id="details", markup=False)
         with Grid(id="main-actions"):
@@ -92,6 +96,7 @@ class VmctlApp(App[None]):
     def on_mount(self) -> None:
         table: DataTable[str] = self.query_one("#vm-table", DataTable)
         table.add_columns("VMID", "Name", "Status", "Template", "CPU", "RAM", "IP")
+        table.tooltip = "Click a VM to view its metrics. Click an IP address to copy it."
         table.focus()
         self.resize_layout()
         self.action_refresh()
@@ -128,8 +133,8 @@ class VmctlApp(App[None]):
         self.connection_status(label + "...")
         disabled = [
             (widget, widget.disabled)
-            for widget in self.screen.query("Button, Input, Checkbox, Select")
-            if isinstance(widget, (Button, Input, Checkbox, Select))
+            for widget in self.screen.query("Button, Input, Checkbox, Select, DataTable")
+            if isinstance(widget, (Button, Input, Checkbox, Select, DataTable))
         ]
         for widget, _ in disabled:
             widget.disabled = True
@@ -213,7 +218,7 @@ class VmctlApp(App[None]):
                     str(details.vm.vmid),
                     details.vm.name,
                     details.metadata.get("template", ""),
-                    str(details.ip or ""),
+                    str(details.display_ip or ""),
                 )
             ).casefold()
         ]
@@ -227,7 +232,7 @@ class VmctlApp(App[None]):
                 details.metadata.get("template", "unknown"),
                 str(vm.cpu),
                 f"{vm.memory_mib / 1024:g}G",
-                str(details.ip or "-"),
+                str(details.display_ip or "-"),
                 key=str(vm.vmid),
             )
         target_row = next(
@@ -280,15 +285,52 @@ class VmctlApp(App[None]):
             main.query_one(f"#{action}-action", Button).disabled = disabled
 
     @on(DataTable.RowSelected, "#vm-table")
-    def open_selected(self) -> None:
-        self.open_details()
+    def open_selected(self, event: DataTable.RowSelected) -> None:
+        if event.row_key.value is not None:
+            self.selected_id = int(event.row_key.value)
+            self.open_details()
+
+    @on(VMTable.Clicked)
+    def clicked_cell(self, event: VMTable.Clicked) -> None:
+        self.selected_id = event.vmid
+        self.show_details()
+        self.update_actions()
+        if event.column == 6:
+            try:
+                address = IPv4Address(event.value)
+            except ValueError:
+                return
+            self.copy_ip(str(address))
+        else:
+            self.open_details()
+
+    def copy_ip(self, address: str) -> None:
+        """Native clipboard writes are bounded and never block the UI thread."""
+
+        def delivered(native: bool) -> None:
+            if native:
+                self.notify(f"Copied {address} to clipboard.")
+            else:
+                self.copy_to_clipboard(address)
+                self.notify(
+                    "Clipboard request sent; terminal clipboard permission/support is required.",
+                    severity="warning",
+                    timeout=8,
+                )
+
+        def run() -> None:
+            native = copy_native(address)
+            if self.is_running:
+                self.call_from_thread(delivered, native)
+
+        self.run_worker(run, thread=True, exit_on_error=False, name="Copy VM address")
 
     def open_details(self) -> None:
         current = self.current()
         if current is not None and not self.busy:
 
             def loaded(details: VMDetails) -> None:
-                self.push_screen(TextScreen("VM details", details_text(details)))
+                self.push_screen(VMDetailsScreen(details))
 
             self.submit(
                 "Loading VM details",

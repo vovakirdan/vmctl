@@ -11,7 +11,7 @@ NAT, WireGuard and public bridge configuration are not modified by this tool.
 
 ## Quickstart (Linux / WSL)
 
-Use the same **0.3.0** release for the workstation client and server worker.
+Use the same **0.4.0** release for the workstation client and server worker.
 If the worker is not installed yet, follow [server installation](#install-the-executor-on-the-proxmox-host)
 and [host prerequisites](#host-prerequisites) first.
 
@@ -152,7 +152,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Keep `/opt/vmctl` and server configuration owned by the administrator. The
 absolute worker path works without relying on a login shell's PATH. An existing
 wheel can be supplied to `uv tool install` instead of `.`. Install compatible
-versions on both sides; this release is **0.3.0**, with protocol version **1**.
+versions on both sides; this release is **0.4.0**, with protocol version **1**.
 
 `vmctl --local config init` installs the server TOML files, system features,
 development modules and guest scripts into `/etc/vmctl`. It never installs
@@ -343,16 +343,21 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 
 A wheel from `dist/` may replace `.` on both sides. Reinstalling and `config init`
 preserve existing settings; add new settings explicitly when needed. Version
-0.3.0 adds the TUI catalog metadata and VM lifecycle requests: update the worker
+0.4.0 adds detected IPs, per-VM metrics, and Go/Python modules: update the worker
 as well as the client. Reopen the shell after refreshing completion.
+
+`config init` adds the new module files and uv installer, but preserves your
+existing `/etc/vmctl/profiles.toml`. To extend an existing `surge-dev`, add `go`
+and `python` to its members on the server, then run `config validate`.
+New installations include them in `surge-dev` and `full-dev` automatically.
 
 If the checkout is only on your workstation, upload the wheel and reinstall the
 worker over your existing SSH alias. These commands assume root access through
 `pxmx` and uv installed at `/root/.local/bin/uv`; adjust that uv path if needed:
 
 ```sh
-scp dist/vmctl-0.3.0-py3-none-any.whl pxmx:/tmp/
-ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.3.0-py3-none-any.whl --python 3.12 --force --reinstall'
+scp dist/vmctl-0.4.0-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.4.0-py3-none-any.whl --python 3.12 --force --reinstall'
 ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
 vmctl config validate
 vmctl tui --read-only
@@ -383,8 +388,12 @@ uv run vmctl tui
 The installed tool works the same way: `vmctl tui`. Use the global
 `--config-dir PATH` before `tui` to choose another client configuration.
 The header identifies the selected SSH target. The table shows VMID, name,
-status, template, CPU, memory and managed IP; search narrows that table. Details
-include system features, development modules, SSH and desktop RDP information.
+status, template, CPU, memory and reserved or detected IP; search narrows that
+table. Click a VM row or press Enter to open its live metrics and configuration.
+Click the **IP cell** to copy that exact VM's address without opening details;
+the details screen also has a **Copy IP** button. System features, development
+modules, SSH and desktop RDP information remain available in the expandable
+configuration section.
 Refresh also reloads template, preset and bootstrap definitions from the SSH
 worker. With direct `--local` execution, reopen the TUI after editing configuration.
 Start, Shutdown, Reboot and Delete operate on the selected VM after a targeted
@@ -430,13 +439,72 @@ Keyboard shortcuts: `Ctrl+N` opens the creation form, `Ctrl+R` refreshes,
 Typing in a text input does not trigger search or quit shortcuts. Buttons also
 support mouse interaction.
 
+### Screenshots
+
+These are captures of the real Textual interface with a reproducible fake worker;
+VM names and metric values are demonstration data. The renderer is in
+[`docs/render_screenshots.py`](docs/render_screenshots.py).
+
+Inventory, including an existing VM detected through DHCP:
+
+![VM inventory](docs/screenshots/dashboard.png)
+
+The creation form separates system integration from optional development tools:
+
+![VM creation and bootstrap choices](docs/screenshots/create.png)
+
+Metrics belong to the selected VM:
+
+![Selected VM CPU, memory, network and disk graphs](docs/screenshots/vm-metrics.png)
+
+Development selections and their descriptions farther down the same form:
+
+![Development modules and profiles](docs/screenshots/features.png)
+
+### Addresses and clipboard
+
+A managed reservation takes display priority. Other private-network addresses
+are discovered through the guest agent, unexpired DHCP leases, static cloud-init
+configuration, and the host's neighbor table, in that order. Guest/lease/neighbor
+observations match the VM's configured MAC on the private bridge. These reads
+never adopt an address into vmctl reservations or edit manual DHCP configuration.
+`vmctl list` and `vmctl info` show the source; details distinguish **Managed IP**
+from observed addresses. `unknown` means no eligible observation was available,
+and an observed address does not prove the guest is currently reachable.
+
+Copy runs on the workstation: WSL/Windows use `clip.exe`, macOS uses `pbcopy`,
+and Linux uses `wl-copy`, `xclip` or `xsel` when available. Otherwise vmctl sends
+an OSC52 clipboard request; the terminal must allow it. An unconfirmed terminal
+request is reported as a request, not as successful clipboard delivery.
+
+### Per-VM graphs
+
+Only the open VM details screen polls metrics, every five seconds. It loads
+the previous hour of minute-averaged Proxmox RRD history once, then collects
+current samples. CPU and memory use a fixed 0–100% scale; network receive/transmit
+and disk read/write auto-scale in bytes per second. Sample spacing varies between
+historical and live data; dots mark missing data. Counter resets, reboots and
+failed requests interrupt rate calculation rather than creating traffic spikes.
+Closing details stops polling. No monitoring daemon or history database is added.
+
+Proxmox reports the selected VM's usage: CPU is relative to its assigned vCPUs,
+memory is host-reported VM memory, and disk graphs show **I/O**, not filesystem
+free space. This is not an in-guest process monitor. Metrics need no guest SSH
+credentials or guest agent; IP discovery can use the agent when available.
+Live CPU uses Proxmox's cached VM sample, normally refreshed by
+[pvestatd](https://raw.githubusercontent.com/proxmox/pve-manager/master/PVE/Service/pvestatd.pm) about
+every ten seconds, so successive five-second polls can repeat the value.
+`vmctl stats NAME_OR_VMID` prints a read-only snapshot with cumulative byte
+counters; live rates are available in the TUI.
+
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
 | `create NAME TEMPLATE PRESET` | Full clone, resource configuration, DHCP reservation and cloud-init; starts by default |
-| `list` | VM names/IDs, status, resources and managed IPs |
+| `list` | VM names/IDs, status, resources and reserved/detected IPs with their source |
 | `info NAME_OR_VMID` | Configuration, system/development features and RDP metadata |
+| `stats NAME_OR_VMID` | Selected VM CPU, memory, uptime and cumulative network/disk counters |
 | `start NAME_OR_VMID` | Start a stopped VM |
 | `shutdown NAME_OR_VMID [--yes]` | Confirm and request a graceful guest shutdown; no hard-stop fallback |
 | `reboot NAME_OR_VMID [--yes]` | Confirm and request a guest reboot |
@@ -498,7 +566,7 @@ Operational examples, **not executed during development**:
 
 ```sh
 vmctl create api-test ubuntu-server small
-vmctl create surge-dev ubuntu-server large --with rust,node,llvm,cmake
+vmctl create surge-dev ubuntu-server large --with rust,node,go,python,llvm,cmake
 vmctl create surge-dev ubuntu-server large --with surge-dev,docker
 vmctl create compat alpine small --no-start
 vmctl create big-test debian heavy --cpu 16 --memory 48G --disk 160G \
@@ -509,6 +577,7 @@ vmctl create work-no-rdp ubuntu-desktop normal --without-system desktop-rdp
 vmctl create desktop-dev ubuntu-desktop large --with rust,node,docker
 vmctl list
 vmctl info surge-dev
+vmctl stats surge-dev
 vmctl start compat
 vmctl shutdown surge-dev
 vmctl reboot surge-dev --yes
@@ -625,7 +694,7 @@ stable dependency order. Profiles recursively expand into modules and profiles:
 
 ```toml
 [profiles]
-surge-dev = ["base", "rust", "node", "llvm", "cmake"]
+surge-dev = ["base", "rust", "node", "go", "python", "llvm", "cmake"]
 debug-dev = ["surge-dev", "debug-tools"]
 ```
 
@@ -789,6 +858,8 @@ Rust, Node.js, Go, Docker, LLVM or build toolchains.
 | base | Distribution build utilities | Distribution build utilities | Distribution build utilities |
 | rust | Upstream rustup stable | Upstream rustup stable | Upstream rustup stable |
 | node | Official upstream LTS binary | Official upstream LTS binary | No supplied implementation |
+| go | `golang-go` | `golang` | `go` (community repository) |
+| python | Python 3, pip, venv + user uv | Python 3, pip, venv + user uv | Python 3, pip, venv + user uv (community repository) |
 | docker | Official stable apt repository | RHEL-compatible Docker CE repository | No supplied implementation |
 | llvm, cmake | Distribution packages | Distribution packages | Distribution packages |
 
@@ -801,11 +872,32 @@ version in module TOML for repeatability. Docker's supplied scripts support the
 stable channel only. The service request model supports per-module version
 overrides for future frontend flags.
 
+`go` and `python` use distribution package versions (`default_version = "system"`);
+numeric overrides are rejected unless your custom definition implements
+`{version}`. Python also installs [upstream uv](https://docs.astral.sh/uv/getting-started/installation/)
+for the configured cloud user under `~/.local/bin`. Its PATH fragment is rendered
+atomically and applies only to that account. `python3 -m pip` is available; use
+virtual environments for project dependencies, preserving the distribution's
+externally managed Python. Alpine requires its community repository to be enabled
+in the template. The installer does not change repository configuration.
+
+Bundled profiles are editable compositions, not mutually exclusive modes:
+
+```toml
+[profiles]
+surge-dev = ["base", "rust", "node", "go", "python", "llvm", "cmake"]
+full-dev = ["base", "rust", "node", "go", "python", "docker", "llvm", "cmake"]
+```
+
+For example, `--with go,python` installs just their dependencies and those tools;
+`--with surge-dev,docker` adds Docker to the composition without duplicate modules.
+Nothing is installed into an existing VM by upgrading the client or worker.
+
 Node binaries are for glibc x86_64/aarch64 guests. Unsupported Alpine node/docker
 requests fail before cloning. Add your own Alpine implementations to enable them.
 The example Alpine release is `unknown`; set the real release if using
-release-specific implementations. Go, Python, Postgres, Redis and a full-dev
-profile can be added through module files; they are not supplied in this MVP.
+release-specific implementations. Postgres and Redis can be added through module
+files; they are not supplied in this release.
 
 Custom user-data explicitly configures the non-root user, public keys,
 hostname, disabled SSH password authentication and bootstrap. Proxmox supplies
@@ -945,12 +1037,15 @@ vmctl/
     bootstrap/{system,modules,scripts}/
   src/vmctl/
     cli.py, completion.py, client_config.py, frontend.py
-    tui/                    # Textual app, creation form and dialogs
+    tui/                    # Textual app, creation form, per-VM metrics and dialogs
     operations.py, protocol.py, ssh.py
     worker.py, local.py
     models.py, config.py, errors.py
     services/catalog.py     # Read-only frontend choices from server TOML
+    services/metrics.py     # Selected-VM current gauges and RRD history
+    network/discovery.py    # Read-only private-network IP observations
     {proxmox,network,bootstrap,services,utils}/
+  docs/screenshots/          # Sanitized TUI captures
   tests/
     client/                 # Portable client and fake SSH process tests
     test_worker.py          # Protocol and host services with fake Proxmox

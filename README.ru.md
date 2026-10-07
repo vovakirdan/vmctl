@@ -11,7 +11,7 @@ NAT, WireGuard и конфигурацию публичного bridge.
 
 ## Быстрый старт (Linux / WSL)
 
-Установите одинаковую версию **0.3.0** клиента и серверного исполнителя.
+Установите одинаковую версию **0.4.0** клиента и серверного исполнителя.
 Если исполнитель ещё не установлен, сначала выполните [установку на сервере](#установка-исполнителя-на-хосте-proxmox)
 и проверьте [требования к хосту](#требования-к-хосту).
 
@@ -156,7 +156,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Каталог `/opt/vmctl` и серверная конфигурация должны принадлежать администратору.
 Абсолютный путь исполнителя позволяет не зависеть от PATH login shell.
 Вместо `.` команде `uv tool install` можно передать готовый wheel. Установите
-совместимые версии с обеих сторон; текущая версия **0.3.0**, версия протокола **1**.
+совместимые версии с обеих сторон; текущая версия **0.4.0**, версия протокола **1**.
 
 `vmctl --local config init` устанавливает серверные TOML-файлы, системные
 возможности, модули разработки и гостевые скрипты в `/etc/vmctl`. `client.toml`
@@ -352,9 +352,14 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 
 Вместо `.` с обеих сторон можно передать wheel из `dist/`. Переустановка и
 `config init` сохраняют существующие настройки; новые поля добавляются явно.
-Версия 0.3.0 добавляет данные каталога для TUI и запросы управления состоянием VM,
+Версия 0.4.0 добавляет обнаружение IP, метрики отдельных VM и модули Go/Python,
 поэтому обновите не только клиент, но и сервер. После обновления дополнения
 откройте новый shell.
+
+`config init` добавляет новые файлы модулей и установщик uv, но сохраняет ваш
+существующий `/etc/vmctl/profiles.toml`. Чтобы расширить существующий `surge-dev`,
+добавьте `go` и `python` к его составу на сервере и выполните `config validate`.
+При новой установке они уже входят в `surge-dev` и `full-dev`.
 
 Если каталог проекта есть только на рабочем компьютере, передайте wheel
 на сервер и переустановите исполнитель через существующее имя подключения SSH.
@@ -362,8 +367,8 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 `/root/.local/bin/uv`; при необходимости укажите другой путь к uv:
 
 ```sh
-scp dist/vmctl-0.3.0-py3-none-any.whl pxmx:/tmp/
-ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.3.0-py3-none-any.whl --python 3.12 --force --reinstall'
+scp dist/vmctl-0.4.0-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.4.0-py3-none-any.whl --python 3.12 --force --reinstall'
 ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
 vmctl config validate
 vmctl tui --read-only
@@ -394,9 +399,12 @@ uv run vmctl tui
 Установленный tool запускается так же: `vmctl tui`. Для другого каталога
 клиентской конфигурации укажите глобальный `--config-dir PATH` перед `tui`.
 Заголовок показывает выбранный SSH-сервер. Таблица содержит VMID, имя,
-состояние, шаблон, CPU, память и управляемый IP; поиск фильтрует строки.
-В деталях доступны системные возможности, модули разработки, SSH и сведения
-о desktop RDP. Refresh также заново загружает определения шаблонов, пресетов
+состояние, шаблон, CPU, память и зарезервированный или обнаруженный IP;
+поиск фильтрует строки. Нажмите на строку VM или Enter, чтобы открыть её
+обновляемые метрики и конфигурацию. Нажатие на **ячейку IP** копирует адрес
+именно этой VM, не открывая детали; в деталях также есть кнопка **Copy IP**.
+Системные возможности, модули разработки, SSH и сведения о desktop RDP
+доступны в раскрываемом разделе конфигурации. Refresh заново загружает определения шаблонов, пресетов
 и bootstrap с SSH-worker. При прямом запуске с `--local` после редактирования
 конфигурации откройте TUI заново. Start, Shutdown, Reboot и Delete работают с выбранной VM
 после подтверждения конкретного действия. Shutdown запрашивает корректное
@@ -445,13 +453,75 @@ GNOME Flashback для RDP; консоль сохраняет обычную с�
 `Q` закрывает приложение. Ввод текста в поле не вызывает команды поиска
 или выхода. Кнопки также доступны для мыши.
 
+### Скриншоты
+
+Это снимки настоящего интерфейса Textual с воспроизводимым имитатором worker;
+имена VM и значения метрик демонстрационные. Скрипт создания снимков —
+[`docs/render_screenshots.py`](docs/render_screenshots.py).
+
+Список VM, включая существующую машину с адресом из DHCP:
+
+![Список виртуальных машин](docs/screenshots/dashboard.png)
+
+Форма создания разделяет системную интеграцию и дополнительные инструменты разработки:
+
+![Создание VM и выбор bootstrap](docs/screenshots/create.png)
+
+Графики относятся к выбранной VM:
+
+![CPU, память, сеть и диск выбранной VM](docs/screenshots/vm-metrics.png)
+
+Выбор инструментов разработки и их описания ниже в той же форме:
+
+![Модули и профили разработки](docs/screenshots/features.png)
+
+### Адреса и буфер обмена
+
+Резервация vmctl имеет приоритет при отображении. Остальные адреса приватной
+сети ищутся через guest agent, действующие DHCP leases, статическую конфигурацию
+cloud-init и таблицу соседей хоста, в таком порядке. Данные guest agent, leases
+и соседей сопоставляются с MAC интерфейса VM на приватном мосту. Эти проверки
+не добавляют адреса в резервации vmctl и не редактируют ручную конфигурацию DHCP.
+`vmctl list` и `vmctl info` показывают источник; в деталях **Managed IP**
+отделён от обнаруженных адресов. `unknown` означает отсутствие подходящих
+данных; обнаруженный адрес не доказывает, что гость сейчас доступен.
+
+Копирование выполняется на рабочем компьютере: WSL/Windows используют `clip.exe`,
+macOS — `pbcopy`, Linux — `wl-copy`, `xclip` или `xsel`, если они доступны.
+Иначе vmctl отправляет запрос OSC52; терминал должен разрешать доступ к буферу.
+Неподтверждённый запрос терминалу обозначается как запрос, без сообщения
+об успешном копировании.
+
+### Графики отдельной VM
+
+Метрики опрашиваются только для открытой VM, каждые пять секунд. При открытии
+загружается час истории Proxmox RRD со средними значениями за минуту,
+затем собираются текущие измерения. CPU и память имеют фиксированную шкалу
+0–100%; приём/передача сети и чтение/запись диска масштабируются автоматически
+в байтах в секунду. Интервалы исторических и текущих измерений отличаются;
+точки обозначают отсутствующие данные. Сброс счётчиков, перезагрузка и ошибки
+прерывают расчёт скорости вместо ложных всплесков трафика. Закрытие деталей
+останавливает опрос. Демон мониторинга и база истории не добавляются.
+
+Proxmox сообщает нагрузку выбранной VM: CPU относительно выделенных vCPU,
+память по данным хоста, а графики диска показывают **I/O**, а не свободное место
+файловой системы. Это не монитор процессов внутри гостя. Метрикам не нужны
+гостевые SSH-ключи или guest agent; обнаружение IP использует агент, когда он доступен.
+Текущий CPU берётся из кеша метрик VM в Proxmox, который
+[pvestatd](https://raw.githubusercontent.com/proxmox/pve-manager/master/PVE/Service/pvestatd.pm) обычно обновляет
+примерно раз в десять секунд. Поэтому два последовательных опроса с интервалом
+пять секунд могут показать одинаковое значение.
+`vmctl stats NAME_OR_VMID` выводит текущие значения с накопленными счётчиками
+байтов; текущие скорости доступны в TUI.
+
 ## Команды
 
 | Команда | Назначение |
 | --- | --- |
 | `create NAME TEMPLATE PRESET` | Полный клон, ресурсы, DHCP и cloud-init; запускает VM по умолчанию |
-| `list` | Имена/VMID, состояние, ресурсы и управляемые IP |
+| `list` | Имена/VMID, состояние, ресурсы и зарезервированные/обнаруженные IP с источником |
 | `info NAME_OR_VMID` | Конфигурация, системные возможности/модули разработки и метаданные RDP |
+| `stats NAME_OR_VMID` | CPU, память, uptime и накопленные счётчики сети/диска выбранной VM |
 | `start NAME_OR_VMID` | Запустить выключенную VM |
 | `shutdown NAME_OR_VMID [--yes]` | Подтвердить и запросить корректное выключение гостя; без принудительной остановки |
 | `reboot NAME_OR_VMID [--yes]` | Подтвердить и запросить перезагрузку гостя |
@@ -515,7 +585,7 @@ snippets или резервирования, не создаёт файл бл�
 
 ```sh
 vmctl create api-test ubuntu-server small
-vmctl create surge-dev ubuntu-server large --with rust,node,llvm,cmake
+vmctl create surge-dev ubuntu-server large --with rust,node,go,python,llvm,cmake
 vmctl create surge-dev ubuntu-server large --with surge-dev,docker
 vmctl create compat alpine small --no-start
 vmctl create big-test debian heavy --cpu 16 --memory 48G --disk 160G \
@@ -526,6 +596,7 @@ vmctl create work-no-rdp ubuntu-desktop normal --without-system desktop-rdp
 vmctl create desktop-dev ubuntu-desktop large --with rust,node,docker
 vmctl list
 vmctl info surge-dev
+vmctl stats surge-dev
 vmctl start compat
 vmctl shutdown surge-dev
 vmctl reboot surge-dev --yes
@@ -649,7 +720,7 @@ shell внутри команды нужно явно вызвать `sh -c` в 
 
 ```toml
 [profiles]
-surge-dev = ["base", "rust", "node", "llvm", "cmake"]
+surge-dev = ["base", "rust", "node", "go", "python", "llvm", "cmake"]
 debug-dev = ["surge-dev", "debug-tools"]
 ```
 
@@ -819,6 +890,8 @@ Rust, Node.js, Go, Docker, LLVM и инструменты сборки.
 | base | Инструменты сборки из дистрибутива | Инструменты сборки из дистрибутива | Инструменты сборки из дистрибутива |
 | rust | rustup stable от разработчиков Rust | rustup stable от разработчиков Rust | rustup stable от разработчиков Rust |
 | node | Официальный бинарный пакет LTS | Официальный бинарный пакет LTS | Готовая реализация не поставляется |
+| go | `golang-go` | `golang` | `go` (репозиторий community) |
+| python | Python 3, pip, venv + пользовательский uv | Python 3, pip, venv + пользовательский uv | Python 3, pip, venv + пользовательский uv (репозиторий community) |
 | docker | Официальный stable-репозиторий apt | Репозиторий Docker CE, совместимый с RHEL | Готовая реализация не поставляется |
 | llvm, cmake | Пакеты дистрибутива | Пакеты дистрибутива | Пакеты дистрибутива |
 
@@ -832,12 +905,34 @@ Rust, Node.js, Go, Docker, LLVM и инструменты сборки.
 поддерживают только канал stable. Модель запросов сервисного слоя предусматривает
 переопределение версии каждого модуля для будущих флагов frontend.
 
+`go` и `python` используют версии пакетов дистрибутива (`default_version = "system"`);
+числовые переопределения отклоняются, если ваше определение не использует
+`{version}`. Python также устанавливает [uv от разработчиков](https://docs.astral.sh/uv/getting-started/installation/)
+для настроенного пользователя cloud-init в `~/.local/bin`. Фрагмент PATH
+записывается атомарно и действует только для этой учётной записи.
+Доступен `python3 -m pip`; для зависимостей проектов используйте виртуальные
+окружения, сохраняя системный Python под управлением дистрибутива. В шаблоне
+Alpine должен быть включён репозиторий community; установщик не меняет
+конфигурацию репозиториев.
+
+Встроенные профили — редактируемые композиции, а не взаимоисключающие режимы:
+
+```toml
+[profiles]
+surge-dev = ["base", "rust", "node", "go", "python", "llvm", "cmake"]
+full-dev = ["base", "rust", "node", "go", "python", "docker", "llvm", "cmake"]
+```
+
+Например, `--with go,python` устанавливает только эти инструменты и их зависимости,
+а `--with surge-dev,docker` добавляет Docker к композиции без повторов модулей.
+Обновление клиента или worker ничего не устанавливает в существующие VM.
+
 Бинарные пакеты Node предназначены для гостей x86_64/aarch64 с glibc.
 Неподдерживаемые запросы node/docker для Alpine отклоняются до клонирования.
 Для их поддержки добавьте собственные реализации для Alpine. В примере release
 для Alpine задан как `unknown`; укажите реальную версию, если используете
-реализации для конкретного release. Go, Python, Postgres, Redis и профиль full-dev
-можно добавить через файлы модулей; в этом MVP они не поставляются.
+реализации для конкретного release. Postgres и Redis можно добавить через файлы
+модулей; в этом выпуске они не поставляются.
 
 Пользовательский user-data явно настраивает учётную запись, отличную от root,
 публичные ключи, hostname, отключение парольной аутентификации SSH и bootstrap.
@@ -985,12 +1080,15 @@ vmctl/
     bootstrap/{system,modules,scripts}/
   src/vmctl/
     cli.py, completion.py, client_config.py, frontend.py
-    tui/                    # Textual app, creation form and dialogs
+    tui/                    # Textual app, creation form, per-VM metrics and dialogs
     operations.py, protocol.py, ssh.py
     worker.py, local.py
     models.py, config.py, errors.py
     services/catalog.py     # Read-only frontend choices from server TOML
+    services/metrics.py     # Selected-VM current gauges and RRD history
+    network/discovery.py    # Read-only private-network IP observations
     {proxmox,network,bootstrap,services,utils}/
+  docs/screenshots/          # Sanitized TUI captures
   tests/
     client/                 # Portable client and fake SSH process tests
     test_worker.py          # Protocol and host services with fake Proxmox

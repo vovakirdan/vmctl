@@ -78,6 +78,10 @@ class ReferenceParameters(WireModel):
     reference: str = Field(min_length=1, max_length=128)
 
 
+class StatsParameters(ReferenceParameters):
+    history: bool = False
+
+
 class DeleteParameters(WireModel):
     vmid: int = Field(gt=0)
     name: str = Field(min_length=1, max_length=63)
@@ -123,6 +127,11 @@ class ReferenceMessage(RequestBase):
     parameters: ReferenceParameters
 
 
+class StatsMessage(RequestBase):
+    operation: Literal["stats"] = "stats"
+    parameters: StatsParameters
+
+
 class DeleteMessage(RequestBase):
     operation: Literal["delete"] = "delete"
     parameters: DeleteParameters
@@ -146,6 +155,7 @@ class QueryMessage(RequestBase):
 Request = Annotated[
     CreateMessage
     | ReferenceMessage
+    | StatsMessage
     | DeleteMessage
     | PlanActionMessage
     | ActionMessage

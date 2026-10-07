@@ -10,7 +10,7 @@ from vmctl.bootstrap.resolver import validate_definitions
 from vmctl.bootstrap.system import validate_system_features
 from vmctl.config import Configuration, Preset, Template, load_config
 from vmctl.errors import VmctlError
-from vmctl.models import CreateRequest, CreateResult, VMDetails
+from vmctl.models import CreateRequest, CreateResult, VMDetails, VMStats
 from vmctl.network.allocator import AddressAllocator
 from vmctl.network.dnsmasq import DnsmasqReservations
 from vmctl.operations import (
@@ -28,6 +28,7 @@ from vmctl.services.catalog import build_catalog
 from vmctl.services.create_vm import CreateVMService
 from vmctl.services.delete_vm import DeleteVMService
 from vmctl.services.lifecycle import LifecycleService
+from vmctl.services.metrics import vm_stats
 from vmctl.services.queries import info_vm, list_vms
 from vmctl.utils.subprocess import SubprocessRunner
 
@@ -102,13 +103,18 @@ class LocalOperations:
             k: "<redacted>" if k in {"cipassword", "sshkeys"} else v
             for k, v in details.config.items()
         }
-        return VMDetails(details.vm, config, details.metadata, details.ip)
+        return VMDetails(
+            details.vm, config, details.metadata, details.ip, details.addresses, details.ip_notes
+        )
 
     def list(self) -> list[VMDetails]:
         return [self.safe_details(item) for item in list_vms(self.client, self.reservations)]
 
     def info(self, reference: str) -> VMDetails:
         return self.safe_details(info_vm(self.client, self.reservations, reference))
+
+    def stats(self, reference: str, *, history: bool = False) -> VMStats:
+        return vm_stats(self.client, reference, history=history)
 
     def catalog(self) -> Catalog:
         return build_catalog(self.config)

@@ -21,14 +21,21 @@ def details_text(details: VMDetails) -> str:
         f"Status: {vm.status}   Node: {vm.node}",
         f"Template: {details.metadata.get('template', 'unknown')}",
         f"CPU: {vm.cpu} vCPU   RAM: {vm.memory_mib / 1024:g} GiB",
-        f"IP: {details.ip or 'unmanaged'}",
+        f"IP: {details.display_ip or 'unknown'} (source: {details.ip_source})",
         f"Desktop: {'yes' if details.desktop else 'no' if details.desktop is False else 'unknown'}",
         "",
         "System features: " + (", ".join(details.system_features) or "none / unknown"),
         "Development modules: " + (", ".join(details.modules) or "none / unknown"),
     ]
-    if details.ip:
-        lines += ["", f"SSH: ssh {username}@{details.ip}"]
+    if details.addresses:
+        lines.append(
+            "Observed addresses: "
+            + ", ".join(f"{item.address} ({item.source})" for item in details.addresses)
+        )
+    if details.ip_notes:
+        lines += ["Address notes: " + "; ".join(details.ip_notes)]
+    if details.display_ip:
+        lines += ["", f"SSH: ssh {username}@{details.display_ip}"]
     if details.rdp_enabled:
         lines += ["", f"RDP: {details.rdp_address or 'address unknown'}", f"User: {username}"]
     return "\n".join(lines)

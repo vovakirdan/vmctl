@@ -15,7 +15,7 @@ from pydantic import TypeAdapter, ValidationError
 from vmctl.client_config import ConnectionConfig
 from vmctl.config import Preset, Template
 from vmctl.errors import ProtocolError, RepeatedRequestError, UnknownOutcomeError, VmctlError
-from vmctl.models import CreateRequest, CreateResult, VMDetails
+from vmctl.models import CreateRequest, CreateResult, VMDetails, VMStats
 from vmctl.operations import (
     ActionPreview,
     ActionResult,
@@ -42,6 +42,8 @@ from vmctl.protocol import (
     ReferenceMessage,
     ReferenceParameters,
     Request,
+    StatsMessage,
+    StatsParameters,
     encode_request,
 )
 
@@ -313,6 +315,15 @@ class SSHOperations:
                 parameters=ReferenceParameters(reference=reference),
             ),
             TypeAdapter(VMDetails),
+        )
+
+    def stats(self, reference: str, *, history: bool = False) -> VMStats:
+        return self._read(
+            StatsMessage(
+                request_id=uuid.uuid4().hex,
+                parameters=StatsParameters(reference=reference, history=history),
+            ),
+            TypeAdapter(VMStats),
         )
 
     def catalog(self) -> Catalog:

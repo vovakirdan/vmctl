@@ -3,6 +3,7 @@
 import re
 from dataclasses import dataclass, field
 from ipaddress import IPv4Address
+from typing import Literal
 
 from pydantic import SecretStr
 
@@ -57,11 +58,29 @@ class VM:
 
 
 @dataclass(frozen=True)
+class IPObservation:
+    address: IPv4Address
+    source: Literal["guest-agent", "dhcp-lease", "cloud-init", "neighbor"]
+
+
+@dataclass(frozen=True)
 class VMDetails:
     vm: VM
     config: dict[str, str]
     metadata: dict[str, str]
     ip: IPv4Address | None
+    addresses: tuple[IPObservation, ...] = ()
+    ip_notes: tuple[str, ...] = ()
+
+    @property
+    def display_ip(self) -> IPv4Address | None:
+        return self.ip or (self.addresses[0].address if self.addresses else None)
+
+    @property
+    def ip_source(self) -> str:
+        if self.ip is not None:
+            return "reservation"
+        return self.addresses[0].source if self.addresses else "unknown"
 
     @property
     def system_features(self) -> tuple[str, ...]:
@@ -82,7 +101,36 @@ class VMDetails:
 
     @property
     def rdp_address(self) -> str | None:
-        return f"{self.ip}:3389" if self.rdp_enabled and self.ip else None
+        return f"{self.display_ip}:3389" if self.rdp_enabled and self.display_ip else None
+
+
+@dataclass(frozen=True)
+class VMMetricPoint:
+    timestamp: float
+    cpu_percent: float | None = None
+    memory_bytes: float | None = None
+    memory_total_bytes: float | None = None
+    network_in_bytes_per_second: float | None = None
+    network_out_bytes_per_second: float | None = None
+    disk_read_bytes_per_second: float | None = None
+    disk_write_bytes_per_second: float | None = None
+
+
+@dataclass(frozen=True)
+class VMStats:
+    vm: VM
+    timestamp: float
+    cpu_percent: float | None = None
+    memory_bytes: int | None = None
+    memory_total_bytes: int | None = None
+    uptime_seconds: int | None = None
+    pid: int | None = None
+    network_in_bytes: int | None = None
+    network_out_bytes: int | None = None
+    disk_read_bytes: int | None = None
+    disk_write_bytes: int | None = None
+    history: tuple[VMMetricPoint, ...] = ()
+    history_note: str = ""
 
 
 @dataclass(frozen=True)

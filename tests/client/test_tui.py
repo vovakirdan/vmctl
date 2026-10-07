@@ -10,7 +10,7 @@ from textual.widgets import Button, Checkbox, DataTable, Input, Static
 
 from vmctl.config import Preset, Template
 from vmctl.errors import UnknownOutcomeError, VmctlError
-from vmctl.models import VM, CreateRequest, CreateResult, Resources, VMDetails
+from vmctl.models import VM, CreateRequest, CreateResult, Resources, VMDetails, VMStats
 from vmctl.operations import (
     ActionPreview,
     ActionResult,
@@ -115,6 +115,11 @@ class FakeOperations:
     def info(self, reference: str) -> VMDetails:
         self.calls.append("info")
         return next(row for row in self.rows if str(row.vm.vmid) == reference)
+
+    def stats(self, reference: str, *, history: bool = False) -> VMStats:
+        self.calls.append(f"stats:{reference}:{history}")
+        vm = next(row.vm for row in self.rows if str(row.vm.vmid) == reference)
+        return VMStats(vm, timestamp=100, cpu_percent=12, memory_bytes=1024)
 
     def plan_create(self, request: CreateRequest) -> CreatePreview:
         self.calls.append("plan_create")

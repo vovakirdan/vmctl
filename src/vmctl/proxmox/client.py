@@ -64,6 +64,74 @@ class ProxmoxClient:
             raise VmctlError("Proxmox returned an invalid VM status")
         return status
 
+    def guest_interfaces(self, vmid: int) -> object:
+        return parse_json(
+            self.command(
+                "pvesh",
+                "get",
+                f"/nodes/{self.node}/qemu/{vmid}/agent/network-get-interfaces",
+                "--output-format",
+                "json",
+                timeout=3,
+            ).stdout
+        )
+
+    def current_metrics(self, vmid: int) -> object:
+        return parse_json(
+            self.command(
+                "pvesh",
+                "get",
+                f"/nodes/{self.node}/qemu/{vmid}/status/current",
+                "--output-format",
+                "json",
+                timeout=5,
+            ).stdout
+        )
+
+    def cached_cpu(self, vmid: int) -> object:
+        """Use pvestatd's sample; a fresh pvesh status process has no CPU baseline."""
+        data = parse_json(
+            self.command(
+                "pvesh",
+                "get",
+                "/cluster/resources",
+                "--type",
+                "vm",
+                "--output-format",
+                "json",
+                timeout=5,
+            ).stdout
+        )
+        if not isinstance(data, list):
+            return None
+        matches = [
+            entry
+            for entry in data
+            if isinstance(entry, dict)
+            and type(entry.get("vmid")) is int
+            and entry.get("vmid") == vmid
+            and entry.get("node") == self.node
+            and entry.get("type") == "qemu"
+            and entry.get("status") == "running"
+        ]
+        return matches[0].get("cpu") if len(matches) == 1 else None
+
+    def metric_history(self, vmid: int) -> object:
+        return parse_json(
+            self.command(
+                "pvesh",
+                "get",
+                f"/nodes/{self.node}/qemu/{vmid}/rrddata",
+                "--timeframe",
+                "hour",
+                "--cf",
+                "AVERAGE",
+                "--output-format",
+                "json",
+                timeout=5,
+            ).stdout
+        )
+
     def next_id(self) -> int:
         args = ["get", "/cluster/nextid", "--output-format", "json"]
         value = parse_json(self.command("pvesh", *args).stdout)

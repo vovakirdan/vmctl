@@ -25,6 +25,7 @@ from vmctl.protocol import (
     QueryMessage,
     ReferenceMessage,
     Request,
+    StatsMessage,
 )
 
 BackendFactory = Callable[[], Operations]
@@ -40,6 +41,8 @@ def dispatch(request: Request, backend: Operations, progress: Callable[[str], No
         if request.operation == "info":
             return backend.info(request.parameters.reference)
         return backend.plan_delete(request.parameters.reference)
+    if isinstance(request, StatsMessage):
+        return backend.stats(request.parameters.reference, history=request.parameters.history)
     if isinstance(request, DeleteMessage):
         params = request.parameters
         return backend.delete(
