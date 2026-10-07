@@ -41,3 +41,14 @@ class UnknownOutcomeError(VmctlError):
             f"Operation outcome is unknown (request {request_id}). Inspect {target} "
             "with vmctl info/list before retrying; no automatic retry was performed"
         )
+
+
+class UncertainOperationError(VmctlError):
+    """A submitted host action may continue after its command process timed out."""
+
+    def __init__(self, vmid: int, operation: str) -> None:
+        self.vmid = vmid
+        super().__init__(
+            f"Outcome of {operation} for VM {vmid} is uncertain after a Proxmox command timeout. "
+            "Inspect VM state and tasks before retrying; no automatic retry was performed"
+        )

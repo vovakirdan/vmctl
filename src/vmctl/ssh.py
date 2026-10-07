@@ -16,14 +16,28 @@ from vmctl.client_config import ConnectionConfig
 from vmctl.config import Preset, Template
 from vmctl.errors import ProtocolError, RepeatedRequestError, UnknownOutcomeError, VmctlError
 from vmctl.models import CreateRequest, CreateResult, VMDetails
-from vmctl.operations import Catalog, CreatePreview, DeletePreview, Progress, ValidationSummary
+from vmctl.operations import (
+    ActionPreview,
+    ActionResult,
+    Catalog,
+    CreatePreview,
+    DeletePreview,
+    LifecycleAction,
+    Progress,
+    ValidationSummary,
+)
 from vmctl.protocol import (
     MAX_MESSAGE_BYTES,
+    MUTATING_OPERATIONS,
+    ActionMessage,
+    ActionParameters,
     CreateMessage,
     CreateParameters,
     DeleteMessage,
     DeleteParameters,
     Event,
+    PlanActionMessage,
+    PlanActionParameters,
     QueryMessage,
     ReferenceMessage,
     ReferenceParameters,
@@ -84,8 +98,8 @@ class SSHTransport:
         messages: queue.Queue[tuple[str, bytes]] = queue.Queue()
         stderr = bytearray()
         vmid: int | None = None
-        mutating = request.operation in {"create", "delete"}
-        if isinstance(request, DeleteMessage):
+        mutating = request.operation in MUTATING_OPERATIONS
+        if isinstance(request, DeleteMessage | ActionMessage):
             vmid = request.parameters.vmid
         terminal: Event | None = None
         hello = False
@@ -180,7 +194,9 @@ class SSHTransport:
             if terminal.kind == "error":
                 if terminal.code == "repeated_request" and terminal.vmid is not None:
                     raise RepeatedRequestError(request.request_id, terminal.vmid)
-                if terminal.code == "internal_error" and mutating:
+                if terminal.code == "unknown_outcome" or (
+                    terminal.code == "internal_error" and mutating
+                ):
                     raise UnknownOutcomeError(request.request_id, terminal.vmid or vmid)
                 message = (
                     terminal.message.replace(secret, "<redacted>") if secret else terminal.message
@@ -219,8 +235,13 @@ class SSHOperations:
         try:
             return adapter.validate_json(json.dumps(event.data))
         except ValidationError as exc:
-            if request.operation in {"create", "delete"}:
-                raise UnknownOutcomeError(request.request_id, event.vmid) from exc
+            if request.operation in MUTATING_OPERATIONS:
+                vmid = (
+                    request.parameters.vmid
+                    if isinstance(request, DeleteMessage | ActionMessage)
+                    else event.vmid
+                )
+                raise UnknownOutcomeError(request.request_id, vmid) from exc
             raise ProtocolError("Invalid worker result schema") from exc
 
     def plan_create(self, request: CreateRequest) -> CreatePreview:
@@ -259,6 +280,25 @@ class SSHOperations:
             TypeAdapter(int),
         )
 
+    def plan_action(self, reference: str, action: LifecycleAction) -> ActionPreview:
+        return self._read(
+            PlanActionMessage(
+                request_id=uuid.uuid4().hex,
+                parameters=PlanActionParameters(reference=reference, action=action),
+            ),
+            TypeAdapter(ActionPreview),
+        )
+
+    def action(self, expected: ActionPreview) -> ActionResult:
+        return self._read(
+            ActionMessage(
+                request_id=uuid.uuid4().hex,
+                operation=expected.action,
+                parameters=ActionParameters.from_preview(expected),
+            ),
+            TypeAdapter(ActionResult),
+        )
+
     def list(self) -> list[VMDetails]:
         return self._read(
             QueryMessage(request_id=uuid.uuid4().hex, operation="list"),
@@ -276,9 +316,15 @@ class SSHOperations:
         )
 
     def catalog(self) -> Catalog:
-        return self._read(
+        catalog = self._read(
             QueryMessage(request_id=uuid.uuid4().hex, operation="catalog"), TypeAdapter(Catalog)
         )
+        if set(catalog.system_defaults) != set(catalog.templates):
+            raise ProtocolError(
+                "Worker catalog is incompatible with this client; upgrade the Proxmox "
+                "vmctl worker and client to the same version"
+            )
+        return catalog
 
     def templates(self) -> dict[str, Template]:
         return self._read(

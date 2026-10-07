@@ -1,0 +1,39 @@
+Screen { background: $surface; }
+#target, #connection { height: auto; min-height: 1; padding: 0 1; }
+#connection { color: $text-muted; }
+#search { margin: 0 1; }
+#dashboard { height: 1fr; margin: 0 1; }
+#vm-table { width: 2fr; height: 1fr; }
+#details-panel { width: 1fr; padding: 1; border-left: solid $primary; overflow-y: auto; }
+#details { height: auto; }
+.narrow #details-panel { display: none; }
+.narrow #vm-table { width: 1fr; }
+#main-actions { grid-size: 8 1; grid-gutter: 0 1; height: 3; margin: 0 1; }
+#main-actions Button { min-width: 0; width: 1fr; }
+.narrow #main-actions { grid-size: 4 2; height: 6; }
+ModalScreen { align: center middle; background: $background 60%; }
+.dialog { width: 68; max-width: 95%; height: auto; max-height: 90%; padding: 1 2; border: thick $primary; background: $surface; }
+.large-dialog { width: 90; height: 80%; }
+.dialog-title { text-style: bold; margin-bottom: 1; width: 1fr; }
+.dialog Static { height: auto; margin-bottom: 1; }
+.dialog Input { margin-bottom: 1; }
+.dialog VerticalScroll { height: 1fr; }
+#progress-log { height: 1fr; }
+.buttons { height: 3; align-horizontal: right; margin-top: 1; }
+.buttons Button { margin-left: 1; }
+#create-title { height: 2; padding: 0 2; }
+#create-scroll { height: 1fr; padding: 0 2; }
+#create-scroll Label { height: auto; }
+#create-scroll Static { height: auto; }
+#create-scroll Input, #create-scroll Select { margin-bottom: 1; }
+.section-title { text-style: bold; color: $accent; margin: 1 0; }
+#resources { height: 6; }
+#resources Vertical { width: 1fr; padding-right: 1; }
+#feature-choices { height: auto; }
+#feature-choices Checkbox { height: 3; width: 1fr; }
+.choice-description { margin-left: 4; margin-bottom: 1; color: $text-muted; }
+.choice-note { margin-left: 4; color: $warning; height: auto; }
+#advanced { margin-top: 1; }
+#create-preview { border-left: solid $primary; padding-left: 1; }
+#create-error, #password-error, #features-error { color: $error; height: auto; }
+#create-buttons { padding: 0 2; margin: 0; }

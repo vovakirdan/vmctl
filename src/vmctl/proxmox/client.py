@@ -58,6 +58,12 @@ class ProxmoxClient:
     def vm_config(self, vmid: int) -> dict[str, str]:
         return parse_config(self.command("qm", "config", str(vmid)).stdout)
 
+    def status(self, vmid: int) -> str:
+        status = parse_config(self.command("qm", "status", str(vmid)).stdout).get("status", "")
+        if not re.fullmatch(r"[a-z][a-z0-9-]*", status):
+            raise VmctlError("Proxmox returned an invalid VM status")
+        return status
+
     def next_id(self) -> int:
         args = ["get", "/cluster/nextid", "--output-format", "json"]
         value = parse_json(self.command("pvesh", *args).stdout)
@@ -123,6 +129,31 @@ class ProxmoxClient:
 
     def stop(self, vmid: int) -> None:
         self.command("qm", "stop", str(vmid), timeout=self.config.host.proxmox.stop_timeout)
+
+    def shutdown(self, vmid: int) -> None:
+        timeout = self.config.host.proxmox.stop_timeout
+        self.command(
+            "qm",
+            "shutdown",
+            str(vmid),
+            "--timeout",
+            str(timeout),
+            "--forceStop",
+            "0",
+            timeout=timeout + self.config.host.proxmox.command_timeout,
+        )
+
+    def reboot(self, vmid: int) -> None:
+        timeout = self.config.host.proxmox.stop_timeout
+        # Proxmox's graceful reboot fails on timeout; it does not force a stop.
+        self.command(
+            "qm",
+            "reboot",
+            str(vmid),
+            "--timeout",
+            str(timeout),
+            timeout=timeout + self.config.host.proxmox.command_timeout,
+        )
 
     def destroy(self, vmid: int) -> None:
         self.command("qm", "destroy", str(vmid), timeout=self.config.host.proxmox.clone_timeout)

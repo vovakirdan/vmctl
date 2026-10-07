@@ -83,11 +83,12 @@ class DenyHostImports(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path, target=None):
         if fullname == 'fcntl':
             raise ModuleNotFoundError('fcntl is unavailable')
-        if fullname.startswith(('vmctl.local', 'vmctl.network', 'vmctl.proxmox', 'vmctl.services.create_vm', 'vmctl.services.delete_vm')):
+        if fullname.startswith(('vmctl.local', 'vmctl.network', 'vmctl.proxmox', 'vmctl.services.create_vm', 'vmctl.services.delete_vm', 'vmctl.services.lifecycle')):
             raise AssertionError('Host import: ' + fullname)
 sys.meta_path.insert(0, DenyHostImports())
 from vmctl.cli import app
 from vmctl.ssh import SSHOperations
+from vmctl.tui.app import VmctlApp
 """
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

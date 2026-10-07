@@ -1,8 +1,9 @@
 # vmctl
 
 Manage Proxmox VE 9 VMs from a Windows, Linux or macOS workstation using
-Python 3.12+, uv and Typer. A Linux-only `vmctl-worker` executes each request
-on the Proxmox host over OpenSSH. No database, daemon or HTTP API.
+Python 3.12+, uv, Typer and a Textual terminal interface. A Linux-only
+`vmctl-worker` executes each request on the Proxmox host over OpenSSH.
+No database, daemon or HTTP API.
 
 Proxmox is the source of truth for VMs. `/etc/dnsmasq.d/vmctl-hosts.conf`
 is the source of truth for vmctl DHCP reservations. Templates, host firewall,
@@ -10,7 +11,7 @@ NAT, WireGuard and public bridge configuration are not modified by this tool.
 
 ## Quickstart (Linux / WSL)
 
-Use the same **0.2.1** release for the workstation client and server worker.
+Use the same **0.3.0** release for the workstation client and server worker.
 If the worker is not installed yet, follow [server installation](#install-the-executor-on-the-proxmox-host)
 and [host prerequisites](#host-prerequisites) first.
 
@@ -46,14 +47,21 @@ and [host prerequisites](#host-prerequisites) first.
    source ~/.bash_completions/vmctl.sh
    ```
 
-5. Check a creation plan before actually creating a VM:
+5. Check a creation plan and inventory without creating a VM:
 
    ```sh
    vmctl create testvm ubuntu-server small --dry-run
-   vmctl create testvm ubuntu-server small
    vmctl list
-   vmctl info testvm
    ```
+
+6. Browse VMs and try the creation form without changing the server:
+
+   ```sh
+   vmctl tui --read-only
+   ```
+
+   Then run `vmctl tui` when ready to create and manage VMs. Both modes use the
+   same `client.toml` and SSH connection as the CLI; no extra service is needed.
 
 The real `create` command starts the VM by default. Connect using the SSH
 command printed in its result. Desktop templates prompt for a private,
@@ -144,7 +152,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Keep `/opt/vmctl` and server configuration owned by the administrator. The
 absolute worker path works without relying on a login shell's PATH. An existing
 wheel can be supplied to `uv tool install` instead of `.`. Install compatible
-versions on both sides; this release is **0.2.1**, with protocol version **1**.
+versions on both sides; this release is **0.3.0**, with protocol version **1**.
 
 `vmctl --local config init` installs the server TOML files, system features,
 development modules and guest scripts into `/etc/vmctl`. It never installs
@@ -334,9 +342,93 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 ```
 
 A wheel from `dist/` may replace `.` on both sides. Reinstalling and `config init`
-preserve existing settings; add new settings explicitly when needed. In 0.2.1,
-dynamic completion and `bootstrap` use the new read-only worker `catalog` request,
-so update the worker too. Reopen the shell after refreshing completion.
+preserve existing settings; add new settings explicitly when needed. Version
+0.3.0 adds the TUI catalog metadata and VM lifecycle requests: update the worker
+as well as the client. Reopen the shell after refreshing completion.
+
+If the checkout is only on your workstation, upload the wheel and reinstall the
+worker over your existing SSH alias. These commands assume root access through
+`pxmx` and uv installed at `/root/.local/bin/uv`; adjust that uv path if needed:
+
+```sh
+scp dist/vmctl-0.3.0-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.3.0-py3-none-any.whl --python 3.12 --force --reinstall'
+ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
+vmctl config validate
+vmctl tui --read-only
+```
+
+Deployment remains manual. CI runs checks and builds packages; it does not push
+new releases onto your privately connected Proxmox host.
+
+## Terminal interface
+
+From an updated project checkout on your workstation:
+
+```sh
+uv sync --locked
+uv run vmctl tui --read-only
+```
+
+Read-only mode displays inventory and details and lets you open the creation
+form and check its plan. Create, Start, Shutdown, Reboot and Delete are disabled.
+Plans may perform the same ARP conflict probes as CLI dry-runs; they do not
+clone or change VM configuration, reservations or services. Close the app, then
+enable management when ready:
+
+```sh
+uv run vmctl tui
+```
+
+The installed tool works the same way: `vmctl tui`. Use the global
+`--config-dir PATH` before `tui` to choose another client configuration.
+The header identifies the selected SSH target. The table shows VMID, name,
+status, template, CPU, memory and managed IP; search narrows that table. Details
+include system features, development modules, SSH and desktop RDP information.
+Refresh also reloads template, preset and bootstrap definitions from the SSH
+worker. With direct `--local` execution, reopen the TUI after editing configuration.
+Start, Shutdown, Reboot and Delete operate on the selected VM after a targeted
+confirmation. Shutdown requests a graceful guest shutdown, with no hard-stop
+fallback.
+
+The single creation form groups its controls by purpose:
+
+| Group | Controls and behavior |
+| --- | --- |
+| Basic | VM name, template and resource preset |
+| Resources | CPU, memory and disk overrides; the template disk is never shrunk |
+| System features | Guest infrastructure, such as `qemu-agent` and `desktop-rdp`; template defaults are selected automatically |
+| Development modules and profiles | Optional tools and reusable compositions, such as `rust`, `node` or `surge-dev`; initially empty |
+| Advanced | IP, local SSH public-key path, description, start after creation, SSH wait timeout and skipping desktop password setup |
+
+Each checkbox has a visible description from the server definition and explains
+dependencies or OS compatibility. Selecting a feature/module resolves its
+dependencies once; incompatible choices are unavailable for the selected
+template. Changing the template recomputes the system defaults. Development
+tools stay opt-in, including for desktop VMs.
+
+In Advanced, **Start after creation** is checked by default; clear it to keep
+the clone stopped until its first boot. **Skip desktop password** leaves GUI/RDP
+authentication to another setup and displays a warning. The SSH wait timeout
+waits for a banner after starting and does not check completed installations.
+
+For Ubuntu Desktop, `desktop-rdp` selects its `qemu-agent` dependency and uses
+GNOME Flashback for RDP, while the console keeps its normal GNOME/Wayland
+session. Desktop creation asks for a masked password and confirmation after
+preflight. Passwords never appear in the plan, progress or result. The advanced
+option to skip password setup is intended for guests with another authentication
+setup. No public RDP port or host firewall rule is added.
+
+Use Preview to inspect the effective resources and resolved selections before
+Create. Progress shows actual worker messages, rather than an estimated
+percentage. Creation success does not prove guest bootstrap completion; an SSH
+banner check only establishes that an SSH service responds. If the connection
+fails during an operation, inspect and refresh the VM state before retrying.
+
+Keyboard shortcuts: `Ctrl+N` opens the creation form, `Ctrl+R` refreshes,
+`/` focuses search, `Enter` opens details from the VM table and `Q` quits.
+Typing in a text input does not trigger search or quit shortcuts. Buttons also
+support mouse interaction.
 
 ## Commands
 
@@ -345,7 +437,11 @@ so update the worker too. Reopen the shell after refreshing completion.
 | `create NAME TEMPLATE PRESET` | Full clone, resource configuration, DHCP reservation and cloud-init; starts by default |
 | `list` | VM names/IDs, status, resources and managed IPs |
 | `info NAME_OR_VMID` | Configuration, system/development features and RDP metadata |
+| `start NAME_OR_VMID` | Start a stopped VM |
+| `shutdown NAME_OR_VMID [--yes]` | Confirm and request a graceful guest shutdown; no hard-stop fallback |
+| `reboot NAME_OR_VMID [--yes]` | Confirm and request a guest reboot |
 | `delete NAME_OR_VMID` | Confirm, stop, destroy and release managed resources |
+| `tui [--read-only]` | Terminal inventory, creation form and VM actions; optional browse/preview-only mode |
 | `templates` / `presets` | Available template names and resource defaults |
 | `bootstrap [--template NAME]` | Separate system features, development modules and profile aliases |
 | `config init` / `config validate` | Initialize client settings / validate client and server definitions |
@@ -371,8 +467,6 @@ Template defaults determine system features (`qemu-agent`, and `desktop-rdp`
 for the bundled desktop template). No development modules run unless requested
 with `--with`. See `vmctl create --help` and `vmctl delete --help` for details.
 
-
-
 Server definitions can also be inspected directly without Proxmox using
 `vmctl --local --config-dir PATH config validate`, `templates` and `presets`.
 From a workstation, these commands query the configured server:
@@ -390,6 +484,9 @@ vmctl create api-test ubuntu-server small --dry-run
 vmctl create surge-dev ubuntu-server large --with surge-dev,docker --dry-run
 vmctl create work ubuntu-desktop normal --dry-run
 vmctl delete 104 --dry-run
+vmctl start compat --dry-run
+vmctl shutdown api-test --dry-run
+vmctl reboot api-test --dry-run
 ```
 
 Dry-run does not clone, obtain/reserve a VMID, write snippets or reservations,
@@ -412,6 +509,9 @@ vmctl create work-no-rdp ubuntu-desktop normal --without-system desktop-rdp
 vmctl create desktop-dev ubuntu-desktop large --with rust,node,docker
 vmctl list
 vmctl info surge-dev
+vmctl start compat
+vmctl shutdown surge-dev
+vmctl reboot surge-dev --yes
 vmctl delete surge-dev
 vmctl delete 104 --yes
 ```
@@ -419,6 +519,16 @@ vmctl delete 104 --yes
 `--start` and `--ip auto` are the defaults. `--wait` checks an SSH banner;
 it does not authenticate, verify the host key or prove bootstrap completion.
 A readiness timeout retains the VM and is reported explicitly.
+
+Start, shutdown and reboot also accept an unambiguous name or VMID. Shutdown and
+reboot ask for confirmation unless `--yes` is supplied. These actions do not
+change reservations or guest bootstrap configuration. Templates and reserved
+template VMIDs cannot be targeted by lifecycle commands, and locked VMs are
+rejected. Start requires a stopped VM; shutdown and reboot require a running VM.
+Each command accepts `--dry-run` to inspect its target without changing state.
+The guest shutdown timeout is configurable through `[proxmox].stop_timeout`
+on the server (120 seconds by default). Reboot may still be restarting when
+Proxmox returns; the result does not establish guest readiness.
 
 `delete` can destroy **any ordinary VM on the selected server**, including manually created VMs,
 after confirmation or with `--yes`. It cannot delete templates or VMIDs 9000–9099.
@@ -811,8 +921,9 @@ an existing clone; it does not assert that all provisioning completed. Once
 that VM is deleted, there is no persistent request history.
 
 If SSH disconnects, the client is interrupted or its timeout expires without a
-conclusive response to create/delete, the outcome is **unknown**. The client
-reports the request ID and any known VMID and never retries automatically.
+conclusive response to create/delete/start/shutdown/reboot, the outcome is
+**unknown**. The client reports the request ID and any known VMID and never
+retries automatically.
 The server may have completed, may still be working or may have stopped; an
 SSH session cannot guarantee that the worker survives disconnects. Inspect
 `vmctl list`, `vmctl info VMID` and Proxmox tasks before retrying. A repeated
@@ -833,7 +944,8 @@ vmctl/
     config.toml, templates.toml, presets.toml, profiles.toml
     bootstrap/{system,modules,scripts}/
   src/vmctl/
-    cli.py, completion.py, client_config.py
+    cli.py, completion.py, client_config.py, frontend.py
+    tui/                    # Textual app, creation form and dialogs
     operations.py, protocol.py, ssh.py
     worker.py, local.py
     models.py, config.py, errors.py
@@ -866,8 +978,10 @@ The portable `Operations` interface is implemented by `SSHOperations` and
 `LocalOperations`. The service layer accepts configuration, runner-backed adapters and a bootstrap
 executor interface. It contains no Typer prompts, console tables or terminal
 formatting. Feature selection, OS validation and provisioning are reusable
-services; only hidden password input belongs to the CLI. A future Textual
-frontend can use the same typed operations and supply credentials securely.
+services. Typer and Textual are separate frontends over the same typed operations;
+each provides its own presentation, confirmations and secure password input.
+Blocking SSH calls run outside the TUI event loop, so progress and navigation
+remain responsive.
 
 Local tests establish parsing and orchestration behavior, not real Proxmox,
 DHCP lease delivery, guest boot or upstream installer acceptance. Perform those

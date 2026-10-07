@@ -55,17 +55,27 @@ def build_catalog(config: Configuration) -> Catalog:
         templates=config.templates,
         presets=config.presets,
         modules=tuple(
-            CatalogItem(name, module.description, development_support(name))
+            CatalogItem(
+                name, module.description, development_support(name), tuple(module.dependencies)
+            )
             for name, module in sorted(modules.items())
         ),
         profiles=tuple(
-            CatalogItem(name, ", ".join(composition), development_support(name))
+            CatalogItem(
+                name, ", ".join(composition), development_support(name), members=tuple(composition)
+            )
             for name, composition in sorted(config.profiles.items())
         ),
         system_features=tuple(
-            CatalogItem(name, feature.description, feature_support(name))
+            CatalogItem(
+                name, feature.description, feature_support(name), tuple(feature.dependencies)
+            )
             for name, feature in sorted(features.items())
         ),
         pool_start=IPv4Address(config.host.network.pool_start),
         pool_end=IPv4Address(config.host.network.pool_end),
+        system_defaults={
+            name: tuple(feature.name for feature in resolve_system_features(template, features))
+            for name, template in config.templates.items()
+        },
     )

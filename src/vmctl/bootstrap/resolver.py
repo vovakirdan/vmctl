@@ -1,12 +1,18 @@
 """Stable recursive dependency and profile expansion with cycle detection."""
 
 from collections.abc import Mapping, Sequence
+from typing import Protocol
 
-from vmctl.bootstrap.models import Definition, Module
+from vmctl.bootstrap.models import Module
 from vmctl.errors import VmctlError
 
 
-def resolve_definitions[DefinitionType: Definition](
+class DependencyNode(Protocol):
+    @property
+    def dependencies(self) -> Sequence[str]: ...
+
+
+def resolve_definitions[DefinitionType: DependencyNode](
     requested: Sequence[str],
     modules: Mapping[str, DefinitionType],
     profiles: Mapping[str, Sequence[str]],

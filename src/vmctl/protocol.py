@@ -17,11 +17,12 @@ from pydantic import (
 
 from vmctl.errors import VmctlError
 from vmctl.models import CreateRequest
-from vmctl.operations import DeletePreview
+from vmctl.operations import ActionPreview, DeletePreview, LifecycleAction
 
 PROTOCOL_VERSION: Literal[1] = 1
 MAX_MESSAGE_BYTES = 1024 * 1024
 RequestID = Annotated[str, Field(pattern=r"^[0-9a-f]{32}$", min_length=32, max_length=32)]
+MUTATING_OPERATIONS = frozenset({"create", "delete", "start", "shutdown", "reboot"})
 
 
 class WireModel(BaseModel):
@@ -87,6 +88,26 @@ class DeleteParameters(WireModel):
         return cls(vmid=preview.vm.vmid, name=preview.vm.name, fingerprint=preview.fingerprint)
 
 
+class PlanActionParameters(ReferenceParameters):
+    action: LifecycleAction
+
+
+class ActionParameters(WireModel):
+    vmid: int = Field(gt=0)
+    name: str = Field(min_length=1, max_length=63)
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    status: str = Field(min_length=1, max_length=32)
+
+    @classmethod
+    def from_preview(cls, preview: ActionPreview) -> "ActionParameters":
+        return cls(
+            vmid=preview.vm.vmid,
+            name=preview.vm.name,
+            status=preview.vm.status,
+            fingerprint=preview.fingerprint,
+        )
+
+
 class RequestBase(WireModel):
     protocol_version: Literal[1] = PROTOCOL_VERSION
     request_id: RequestID
@@ -107,13 +128,28 @@ class DeleteMessage(RequestBase):
     parameters: DeleteParameters
 
 
+class PlanActionMessage(RequestBase):
+    operation: Literal["plan_action"] = "plan_action"
+    parameters: PlanActionParameters
+
+
+class ActionMessage(RequestBase):
+    operation: LifecycleAction
+    parameters: ActionParameters
+
+
 class QueryMessage(RequestBase):
     operation: Literal["list", "templates", "presets", "validate_config", "catalog"]
     parameters: EmptyParameters = Field(default_factory=EmptyParameters)
 
 
 Request = Annotated[
-    CreateMessage | ReferenceMessage | DeleteMessage | QueryMessage,
+    CreateMessage
+    | ReferenceMessage
+    | DeleteMessage
+    | PlanActionMessage
+    | ActionMessage
+    | QueryMessage,
     Field(discriminator="operation"),
 ]
 REQUEST_ADAPTER: TypeAdapter[Request] = TypeAdapter(Request)

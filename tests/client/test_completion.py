@@ -115,6 +115,9 @@ def test_dynamic_templates_in_shell_protocols(backend: CompletionBackend, shell:
         ("vmctl create testvm ubuntu-server small --disk 2", "20G", "catalog"),
         ("vmctl info wo", "work", "list"),
         ("vmctl delete 10", "104", "list"),
+        ("vmctl start wo", "work", "list"),
+        ("vmctl shutdown wo", "work", "list"),
+        ("vmctl reboot 10", "104", "list"),
         ("vmctl bootstrap --template ubu", "ubuntu-server", "catalog"),
     ],
 )

@@ -13,11 +13,21 @@ from vmctl.errors import VmctlError
 from vmctl.models import CreateRequest, CreateResult, VMDetails
 from vmctl.network.allocator import AddressAllocator
 from vmctl.network.dnsmasq import DnsmasqReservations
-from vmctl.operations import Catalog, CreatePreview, DeletePreview, Progress, ValidationSummary
+from vmctl.operations import (
+    ActionPreview,
+    ActionResult,
+    Catalog,
+    CreatePreview,
+    DeletePreview,
+    LifecycleAction,
+    Progress,
+    ValidationSummary,
+)
 from vmctl.proxmox.client import ProxmoxClient
 from vmctl.services.catalog import build_catalog
 from vmctl.services.create_vm import CreateVMService
 from vmctl.services.delete_vm import DeleteVMService
+from vmctl.services.lifecycle import LifecycleService
 from vmctl.services.queries import info_vm, list_vms
 from vmctl.utils.subprocess import SubprocessRunner
 
@@ -47,6 +57,7 @@ class LocalOperations:
             self.config, self.client, self.reservations, allocator, CloudInitRenderer(self.config)
         )
         self.deleter = DeleteVMService(self.config, self.client, self.reservations)
+        self.lifecycle = LifecycleService(self.config, self.client)
 
     def plan_create(self, request: CreateRequest) -> CreatePreview:
         plan = self.creator.plan(request)
@@ -78,6 +89,12 @@ class LocalOperations:
             raise VmctlError("VM changed since confirmation; inspect it and retry")
         # The service checks the same plan again while holding the host lock.
         return self.deleter.delete(str(expected.vm.vmid), expected=current)
+
+    def plan_action(self, reference: str, action: LifecycleAction) -> ActionPreview:
+        return self.lifecycle.plan(reference, action)
+
+    def action(self, expected: ActionPreview) -> ActionResult:
+        return self.lifecycle.action(expected)
 
     @staticmethod
     def safe_details(details: VMDetails) -> VMDetails:

@@ -11,15 +11,17 @@ from typing import TextIO
 from pydantic import TypeAdapter, ValidationError
 
 from vmctl import __version__
-from vmctl.errors import RepeatedRequestError, VmctlError
+from vmctl.errors import RepeatedRequestError, UncertainOperationError, VmctlError
 from vmctl.models import VM
-from vmctl.operations import DeletePreview, Operations
+from vmctl.operations import ActionPreview, DeletePreview, Operations
 from vmctl.protocol import (
     MAX_MESSAGE_BYTES,
     REQUEST_ADAPTER,
+    ActionMessage,
     CreateMessage,
     DeleteMessage,
     Event,
+    PlanActionMessage,
     QueryMessage,
     ReferenceMessage,
     Request,
@@ -42,6 +44,17 @@ def dispatch(request: Request, backend: Operations, progress: Callable[[str], No
         params = request.parameters
         return backend.delete(
             DeletePreview(VM(params.vmid, params.name, "unknown", ""), params.fingerprint)
+        )
+    if isinstance(request, PlanActionMessage):
+        return backend.plan_action(request.parameters.reference, request.parameters.action)
+    if isinstance(request, ActionMessage):
+        action_params = request.parameters
+        return backend.action(
+            ActionPreview(
+                VM(action_params.vmid, action_params.name, action_params.status, ""),
+                action_params.fingerprint,
+                request.operation,
+            )
         )
     if isinstance(request, QueryMessage):
         match request.operation:
@@ -136,6 +149,16 @@ def serve(raw: str, output: TextIO, factory: BackendFactory) -> int:
                 request_id=request_id,
                 kind="error",
                 code="repeated_request",
+                message=safe(str(exc)),
+                vmid=exc.vmid,
+            )
+        )
+    except UncertainOperationError as exc:
+        emit(
+            Event(
+                request_id=request_id,
+                kind="error",
+                code="unknown_outcome",
                 message=safe(str(exc)),
                 vmid=exc.vmid,
             )

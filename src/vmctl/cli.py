@@ -7,7 +7,7 @@ import sys
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
@@ -19,14 +19,13 @@ from vmctl import completion
 from vmctl.client_config import (
     default_client_directory,
     initialize_client_config,
-    load_client_config,
 )
 from vmctl.errors import VmctlError
+from vmctl.frontend import FrontendSettings, build_operations, load_public_key, target_label
 from vmctl.models import CreateRequest
-from vmctl.operations import Operations
+from vmctl.operations import LifecycleAction, Operations
 from vmctl.services.init_config import initialize_config
 from vmctl.utils.passwords import hash_desktop_password
-from vmctl.utils.ssh_keys import read_public_key
 
 if TYPE_CHECKING:
     from vmctl.config import Configuration
@@ -47,10 +46,7 @@ console = Console(markup=False)
 errors = Console(stderr=True, markup=False)
 
 
-@dataclass(frozen=True)
-class CLISettings:
-    directory: Path
-    local: bool
+CLISettings = FrontendSettings
 
 
 @contextmanager
@@ -110,40 +106,11 @@ def settings_for(ctx: typer.Context) -> CLISettings:
 
 
 def operations(ctx: typer.Context, *, completion: bool = False) -> Operations:
-    settings = settings_for(ctx)
-    if settings.local:
-        from vmctl.local import LocalOperations
-
-        return LocalOperations(settings.directory, factory=dependencies)
-    from vmctl.ssh import SSHOperations, SSHTransport
-
-    config = load_client_config(settings.directory)
-    connection = config.connection
-    if completion:
-        connection = connection.model_copy(
-            update={
-                "connect_timeout": min(
-                    connection.connect_timeout, config.client.completion_timeout
-                ),
-                "operation_timeout": min(
-                    connection.operation_timeout, config.client.completion_timeout
-                ),
-            }
-        )
-    return SSHOperations(SSHTransport(connection))
+    return build_operations(settings_for(ctx), completion=completion, local_factory=dependencies)
 
 
 def public_key(ctx: typer.Context, path: Path | None) -> str | None:
-    settings: CLISettings = ctx.obj
-    if path is not None:
-        return read_public_key(path.expanduser())
-    if settings.local:
-        return None
-    config = load_client_config(settings.directory)
-    key_path = Path(config.client.ssh_key).expanduser()
-    if not key_path.is_absolute():
-        key_path = settings.directory / key_path
-    return read_public_key(key_path)
+    return load_public_key(settings_for(ctx), path)
 
 
 @app.command(
@@ -375,6 +342,91 @@ def delete(
             )
         vmid = backend.delete(plan)
         console.print(f"VM {vmid} deleted successfully")
+
+
+VMReference = Annotated[
+    str,
+    typer.Argument(help="Existing VM name or VMID.", autocompletion=completion.references),
+]
+
+
+def lifecycle_command(
+    ctx: typer.Context, reference: str, action: LifecycleAction, *, yes: bool, dry_run: bool
+) -> None:
+    with present_errors():
+        backend = operations(ctx)
+        plan = backend.plan_action(reference, action)
+        target = f"VM {plan.vm.vmid} ({plan.vm.name})"
+        if dry_run:
+            console.print(f"Dry run: {action} {target}; current status: {plan.vm.status}")
+            return
+        if not yes:
+            typer.confirm(f"{action.capitalize()} {target}?", abort=True)
+        result = backend.action(plan)
+        console.print(f"{action.capitalize()} completed for {target}; status: {result.vm.status}")
+
+
+@app.command(help="Start a stopped VM. Templates and locked VMs are protected.")
+def start(
+    ctx: typer.Context,
+    reference: VMReference,
+    dry_run: Annotated[
+        bool, typer.Option(help="Check the VM and show the action without starting it.")
+    ] = False,
+) -> None:
+    lifecycle_command(ctx, reference, "start", yes=True, dry_run=dry_run)
+
+
+@app.command(
+    help="Gracefully shut down a running VM using ACPI or the guest agent. Uses the configured stop_timeout (default 120 seconds); never falls back to a forced stop."
+)
+def shutdown(
+    ctx: typer.Context,
+    reference: VMReference,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip shutdown confirmation.")] = False,
+    dry_run: Annotated[
+        bool, typer.Option(help="Check the VM and show the action without shutting it down.")
+    ] = False,
+) -> None:
+    lifecycle_command(ctx, reference, "shutdown", yes=yes, dry_run=dry_run)
+
+
+@app.command(
+    help="Gracefully reboot a running VM through Proxmox. Uses the configured stop_timeout (default 120 seconds); never forces a reset. Guest readiness is not verified."
+)
+def reboot(
+    ctx: typer.Context,
+    reference: VMReference,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip reboot confirmation.")] = False,
+    dry_run: Annotated[
+        bool, typer.Option(help="Check the VM and show the action without rebooting it.")
+    ] = False,
+) -> None:
+    lifecycle_command(ctx, reference, "reboot", yes=yes, dry_run=dry_run)
+
+
+@app.command(
+    help="Open the Textual VM dashboard and creation form using the same connection settings as the CLI. System features and opt-in development modules have separate selectors."
+)
+def tui(
+    ctx: typer.Context,
+    read_only: Annotated[
+        bool,
+        typer.Option(
+            help="Browse VMs and preview the creation form; disable create, delete and lifecycle operations."
+        ),
+    ] = False,
+) -> None:
+    with present_errors():
+        from vmctl.tui.app import VmctlApp
+
+        settings = settings_for(ctx)
+        VmctlApp(
+            operations(ctx),
+            target=target_label(settings),
+            public_key=lambda path: load_public_key(settings, path),
+            read_only=read_only,
+        ).run()
 
 
 @app.command("list", help="List VMs with resources and managed IPs.")

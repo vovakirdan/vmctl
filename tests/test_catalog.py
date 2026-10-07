@@ -28,4 +28,21 @@ def test_catalog_reads_new_user_module(config: Configuration) -> None:
     catalog = build_catalog(config)
     custom = next(item for item in catalog.modules if item.name == "custom")
     assert custom.description == "User module"
+    assert custom.dependencies == ("base",)
     assert "ubuntu-server" in custom.templates and "alpine" not in custom.templates
+
+
+def test_catalog_supplies_editable_defaults_and_dependencies(config: Configuration) -> None:
+    catalog = build_catalog(config)
+    assert catalog.system_defaults["ubuntu-desktop"] == ("qemu-agent", "desktop-rdp")
+    assert catalog.system_defaults["ubuntu-server"] == ("qemu-agent",)
+    assert next(f for f in catalog.system_features if f.name == "desktop-rdp").dependencies == (
+        "qemu-agent",
+    )
+    assert next(p for p in catalog.profiles if p.name == "surge-dev").members == tuple(
+        config.profiles["surge-dev"]
+    )
+    config.templates["ubuntu-server"] = config.templates["ubuntu-server"].model_copy(
+        update={"system_features": []}
+    )
+    assert build_catalog(config).system_defaults["ubuntu-server"] == ()

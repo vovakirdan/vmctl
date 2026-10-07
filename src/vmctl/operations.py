@@ -1,14 +1,28 @@
 """Frontend contract and public DTOs. No guest credentials or cloud-init data."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from ipaddress import IPv4Address
-from typing import Protocol
+from typing import Literal, Protocol
 
 from vmctl.config import Preset, Template
 from vmctl.models import VM, CreateRequest, CreateResult, Resources, VMDetails
 
 Progress = Callable[[str], None]
+LifecycleAction = Literal["start", "shutdown", "reboot"]
+
+
+@dataclass(frozen=True)
+class ActionPreview:
+    vm: VM
+    fingerprint: str
+    action: LifecycleAction
+
+
+@dataclass(frozen=True)
+class ActionResult:
+    vm: VM
+    action: LifecycleAction
 
 
 @dataclass(frozen=True)
@@ -45,6 +59,8 @@ class CatalogItem:
     name: str
     description: str
     templates: tuple[str, ...]
+    dependencies: tuple[str, ...] = ()
+    members: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -56,6 +72,7 @@ class Catalog:
     system_features: tuple[CatalogItem, ...]
     pool_start: IPv4Address
     pool_end: IPv4Address
+    system_defaults: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 class Operations(Protocol):
@@ -65,6 +82,8 @@ class Operations(Protocol):
     ) -> CreateResult: ...
     def plan_delete(self, reference: str) -> DeletePreview: ...
     def delete(self, expected: DeletePreview) -> int: ...
+    def plan_action(self, reference: str, action: LifecycleAction) -> ActionPreview: ...
+    def action(self, expected: ActionPreview) -> ActionResult: ...
     def list(self) -> list[VMDetails]: ...
     def info(self, reference: str) -> VMDetails: ...
     def catalog(self) -> Catalog: ...
