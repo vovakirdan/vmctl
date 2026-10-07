@@ -1,0 +1,13 @@
+name = "rust"
+description = "Rust through upstream rustup, installed for the cloud user"
+dependencies = ["base"]
+default_version = "stable"
+
+[implementations.debian]
+scripts = [{file = "rust-install.sh", args = ["{username}", "{version}"]}]
+
+[implementations.rhel]
+scripts = [{file = "rust-install.sh", args = ["{username}", "{version}"]}]
+
+[implementations.alpine]
+scripts = [{file = "rust-install.sh", args = ["{username}", "{version}"]}]

@@ -1,0 +1,1 @@
+"""Local Proxmox command adapter."""

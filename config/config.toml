@@ -1,0 +1,37 @@
+# Example configuration for the local Proxmox host.
+username = "vmadmin"
+ssh_key = "/root/.ssh/id_ed25519.pub"
+lock_file = "/run/lock/vmctl.lock"
+lock_timeout = 30
+
+[network]
+bridge = "vmbr1"
+subnet = "10.210.0.0/24"
+gateway = "10.210.0.1"
+pool_start = "10.210.0.100"
+pool_end = "10.210.0.199"
+reservations = "/etc/dnsmasq.d/vmctl-hosts.conf"
+leases = "/var/lib/misc/dnsmasq.leases"
+dnsmasq_config = "/etc/dnsmasq.conf"
+# Extra --conf-dir/-7 specifications used by the running dnsmasq service.
+# Debian example: ["/etc/dnsmasq.d,.dpkg-dist,.dpkg-old,.dpkg-new"].
+# Leave empty when dnsmasq_config already includes the reservations directory.
+dnsmasq_conf_dirs = []
+service = "dnsmasq"
+probe = true
+
+[proxmox]
+# node = "pve" # Defaults to the host's short hostname.
+# clone_storage = "local-lvm" # Omit to inherit template storage.
+snippets_storage = "local"
+command_timeout = 60
+clone_timeout = 1800
+stop_timeout = 120
+
+[bootstrap]
+modules_dir = "bootstrap/modules"
+scripts_dir = "bootstrap/scripts"
+system_features_dir = "bootstrap/system"
+
+[binaries]
+# qm = "/usr/sbin/qm"

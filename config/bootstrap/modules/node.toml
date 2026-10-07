@@ -1,0 +1,12 @@
+name = "node"
+description = "Upstream Node.js LTS binary; glibc Linux only"
+dependencies = ["base"]
+default_version = "lts"
+
+[implementations.debian]
+packages = ["libatomic1"]
+scripts = [{file = "node-install.sh", args = ["{version}"]}]
+
+[implementations.rhel]
+packages = ["libatomic"]
+scripts = [{file = "node-install.sh", args = ["{version}"]}]

@@ -1,0 +1,40 @@
+[templates.ubuntu-server]
+vmid = 9000
+family = "debian"
+distro = "ubuntu"
+release = "noble"
+desktop = false
+system_features = ["qemu-agent"]
+
+[templates.ubuntu-desktop]
+vmid = 9001
+family = "debian"
+distro = "ubuntu"
+release = "noble"
+desktop = true
+system_features = ["qemu-agent", "desktop-rdp"]
+
+[templates.debian]
+vmid = 9010
+family = "debian"
+distro = "debian"
+release = "trixie"
+desktop = false
+system_features = ["qemu-agent"]
+
+[templates.alpine]
+vmid = 9020
+family = "alpine"
+distro = "alpine"
+# Set the actual release of your existing Alpine template if release-specific modules need it.
+release = "unknown"
+desktop = false
+system_features = ["qemu-agent"]
+
+[templates.rocky]
+vmid = 9030
+family = "rhel"
+distro = "rocky"
+release = "9"
+desktop = false
+system_features = ["qemu-agent"]

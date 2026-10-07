@@ -1,0 +1,11 @@
+name = "base"
+description = "Development prerequisites; opt-in"
+
+[implementations.debian]
+packages = ["build-essential", "pkg-config", "curl", "git", "xz-utils"]
+
+[implementations.rhel]
+packages = ["gcc", "gcc-c++", "make", "pkgconf-pkg-config", "curl", "git", "xz"]
+
+[implementations.alpine]
+packages = ["build-base", "pkgconf", "curl", "git", "xz"]

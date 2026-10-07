@@ -1,0 +1,17 @@
+name = "desktop-rdp"
+description = "Private XRDP with a separate GNOME Flashback X11 session"
+supported_families = ["debian"]
+auto_apply = "desktop"
+dependencies = ["qemu-agent"]
+
+[implementations.debian]
+# Explicit dependencies keep the Flashback session usable with --no-install-recommends.
+packages = ["xrdp", "xorgxrdp", "gnome-session-flashback", "dbus-x11", "x11-xserver-utils", "ssl-cert"]
+# Debian's packaged TLS key requires ssl-cert membership; restart picks up new groups.
+commands = [["usermod", "-a", "-G", "ssl-cert", "xrdp"], ["systemctl", "enable", "xrdp"], ["systemctl", "restart", "xrdp-sesman", "xrdp"], ["systemctl", "is-active", "--quiet", "xrdp", "xrdp-sesman"]]
+
+[[implementations.debian.files]]
+path = "/home/{username}/.xsession"
+owner = "{username}:{username}"
+permissions = "0600"
+content = "exec gnome-session --session=gnome-flashback-metacity\n"

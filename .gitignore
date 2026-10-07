@@ -1,0 +1,35 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+*.egg-info/
+
+# Python build and test artifacts
+build/
+*.py[cod]
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# Machine-specific settings, credentials, and operational output
+.env
+.env.*
+!.env.example
+client.toml
+!config/client.toml
+*.pem
+*.key
+*.log
+logs/
+.venv-*/
+
+# Editors and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

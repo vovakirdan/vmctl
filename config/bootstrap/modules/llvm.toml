@@ -1,0 +1,12 @@
+name = "llvm"
+description = "Distribution LLVM and Clang packages"
+dependencies = ["base"]
+
+[implementations.debian]
+packages = ["llvm", "llvm-dev", "clang"]
+
+[implementations.rhel]
+packages = ["llvm", "llvm-devel", "clang"]
+
+[implementations.alpine]
+packages = ["llvm", "llvm-dev", "clang"]

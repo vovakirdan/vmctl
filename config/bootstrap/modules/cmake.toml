@@ -1,0 +1,12 @@
+name = "cmake"
+description = "Distribution CMake and Ninja packages"
+dependencies = ["base"]
+
+[implementations.debian]
+packages = ["cmake", "ninja-build"]
+
+[implementations.rhel]
+packages = ["cmake", "ninja-build"]
+
+[implementations.alpine]
+packages = ["cmake", "ninja"]

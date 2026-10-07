@@ -1,0 +1,14 @@
+name = "docker"
+description = "Docker CE stable repository; use sudo docker as the cloud user"
+dependencies = ["base"]
+default_version = "stable"
+
+[implementations."ubuntu:noble"]
+scripts = [{file = "docker-apt.sh", args = ["{version}"]}]
+
+[implementations."debian:trixie"]
+scripts = [{file = "docker-apt.sh", args = ["{version}"]}]
+
+[implementations."rocky:9"]
+packages = ["dnf-plugins-core"]
+scripts = [{file = "docker-rpm.sh", args = ["{version}"]}]

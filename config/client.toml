@@ -1,0 +1,16 @@
+# Workstation configuration. Server definitions remain on the Proxmox host.
+[connection]
+# An existing OpenSSH Host alias; authentication is configured in ~/.ssh/config.
+host = "pve"
+worker = "/opt/vmctl/bin/vmctl-worker"
+config_dir = "/etc/vmctl"
+sudo = false
+connect_timeout = 10
+operation_timeout = 3600
+
+[client]
+# Public key installed in new guests, independent of the SSH connection identity.
+ssh_key = "~/.ssh/id_ed25519.pub"
+
+# Maximum wait for read-only Tab-completion SSH requests, in seconds.
+completion_timeout = 3

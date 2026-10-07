@@ -1,0 +1,73 @@
+"""Frontend contract and public DTOs. No guest credentials or cloud-init data."""
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from ipaddress import IPv4Address
+from typing import Protocol
+
+from vmctl.config import Preset, Template
+from vmctl.models import VM, CreateRequest, CreateResult, Resources, VMDetails
+
+Progress = Callable[[str], None]
+
+
+@dataclass(frozen=True)
+class CreatePreview:
+    template_vmid: int
+    resources: Resources
+    disk_device: str
+    template_disk_gib: int
+    bridge: str
+    username: str
+    modules: tuple[str, ...]
+    system_features: tuple[str, ...]
+    desktop: bool
+    requires_desktop_password: bool
+
+
+@dataclass(frozen=True)
+class DeletePreview:
+    vm: VM
+    fingerprint: str
+
+
+@dataclass(frozen=True)
+class ValidationSummary:
+    templates: int
+    presets: int
+    system_features: int
+    modules: int
+    profiles: int
+
+
+@dataclass(frozen=True)
+class CatalogItem:
+    name: str
+    description: str
+    templates: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Catalog:
+    templates: dict[str, Template]
+    presets: dict[str, Preset]
+    modules: tuple[CatalogItem, ...]
+    profiles: tuple[CatalogItem, ...]
+    system_features: tuple[CatalogItem, ...]
+    pool_start: IPv4Address
+    pool_end: IPv4Address
+
+
+class Operations(Protocol):
+    def plan_create(self, request: CreateRequest) -> CreatePreview: ...
+    def create(
+        self, request: CreateRequest, *, request_id: str, progress: Progress
+    ) -> CreateResult: ...
+    def plan_delete(self, reference: str) -> DeletePreview: ...
+    def delete(self, expected: DeletePreview) -> int: ...
+    def list(self) -> list[VMDetails]: ...
+    def info(self, reference: str) -> VMDetails: ...
+    def catalog(self) -> Catalog: ...
+    def templates(self) -> dict[str, Template]: ...
+    def presets(self) -> dict[str, Preset]: ...
+    def validate_config(self) -> ValidationSummary: ...
