@@ -268,6 +268,8 @@ files require snippets-capable storage.
 ## Tab completion
 
 Bash, Zsh, Fish and PowerShell completion is supported by Typer. In Bash/WSL,
+use **Bash 4.4+**; macOS's bundled Bash 3.2 is too old, so use its default Zsh
+or a newer Bash. In Bash,
 `vmctl --install-completion` writes the completion script and adds its source
 line to `~/.bashrc`. Open a new shell or source the script as in the quickstart.
 Run the installer in the shell where you use vmctl. For Zsh/Fish, open a new

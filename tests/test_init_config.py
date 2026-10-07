@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+from rich.ansi import AnsiDecoder
 from typer.testing import CliRunner
 
 from vmctl.bootstrap.models import load_modules
@@ -94,12 +95,13 @@ def test_cli_init_works_before_config_exists(tmp_path: Path) -> None:
     assert "small" in result.output and "heavy" in result.output
     result = runner.invoke(app, ["--local", "--config-dir", str(root), "config", "init"])
     assert result.exit_code == 0, result.output
-    assert "Created 0 files" in result.output
+    output = "\n".join(line.plain for line in AnsiDecoder().decode(result.output))
+    assert "Created 0 files" in " ".join(output.split())
 
 
 def test_missing_config_error_explains_initialization(tmp_path: Path) -> None:
     root = tmp_path / "config"
     result = CliRunner().invoke(app, ["--local", "--config-dir", str(root), "presets"])
     assert result.exit_code == 1
-    assert "config init" in result.output
+    assert "config init" in " ".join(result.output.split())
     assert not root.exists()
