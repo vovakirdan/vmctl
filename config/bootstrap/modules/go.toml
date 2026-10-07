@@ -1,0 +1,17 @@
+name = "go"
+description = "Go compiler and tools from the guest distribution repositories"
+dependencies = ["base"]
+default_version = "system"
+
+[implementations.debian]
+packages = ["golang-go"]
+commands = [["go", "version"]]
+
+[implementations.rhel]
+packages = ["golang"]
+commands = [["go", "version"]]
+
+[implementations.alpine]
+# Requires the existing Alpine community repository; vmctl does not edit repositories.
+packages = ["go"]
+commands = [["go", "version"]]

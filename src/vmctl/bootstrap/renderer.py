@@ -64,6 +64,23 @@ class CloudInitRenderer:
             )
             if version and not re.fullmatch(r"[a-zA-Z0-9_.+-]{1,128}", version):
                 raise VmctlError(f"Invalid version for module {module.name}")
+            if isinstance(module, Module) and module.name in versions:
+                version_fields = (
+                    *implementation.packages,
+                    *(argument for command in implementation.commands for argument in command),
+                    *(argument for script in implementation.scripts for argument in script.args),
+                    *(
+                        value
+                        for item in implementation.files
+                        for value in (item.path, item.content, item.owner)
+                    ),
+                )
+                if version != module.default_version and not any(
+                    "{version}" in value for value in version_fields
+                ):
+                    raise VmctlError(
+                        f"Module {module.name!r} does not support version overrides for this template"
+                    )
 
             def expand(value: str, version: str = version) -> str:
                 return value.replace("{version}", version).replace("{username}", username)
