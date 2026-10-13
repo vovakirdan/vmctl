@@ -90,6 +90,7 @@ class HostConfig(StrictModel):
     ssh_key: str = "/root/.ssh/id_ed25519.pub"
     lock_file: str = "/run/lock/vmctl.lock"
     lock_timeout: int = Field(default=30, gt=0)
+    spice_file: str = "spice.toml"
     network: NetworkConfig = Field(default_factory=NetworkConfig)
     proxmox: ProxmoxConfig = Field(default_factory=ProxmoxConfig)
     bootstrap: BootstrapConfig = Field(default_factory=BootstrapConfig)
@@ -134,6 +135,52 @@ class Configuration(StrictModel):
         if not 1 <= cpu <= 512:
             raise VmctlError("CPU count must be between 1 and 512")
         return Resources(cpu, memory, disk)
+
+
+class SpiceGuestCommands(StrictModel):
+    os_ids: list[str] = Field(min_length=1)
+    commands: list[list[str]] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_commands(self) -> "SpiceGuestCommands":
+        if any(not re.fullmatch(r"[a-z0-9_-]+", value) for value in self.os_ids):
+            raise ValueError("SPICE os_ids must contain lowercase OS identifiers")
+        if any(
+            not command or any(not arg or "\x00" in arg for arg in command)
+            for command in self.commands
+        ):
+            raise ValueError("SPICE commands must contain nonempty argument arrays without NUL")
+        return self
+
+
+class SpiceSettings(StrictModel):
+    timeout_seconds: int = Field(default=300, gt=0, le=3600)
+    poll_interval_seconds: int = Field(default=2, gt=0, le=30)
+    agent_timeout_seconds: int = Field(default=10, gt=0, le=60)
+    families: dict[str, SpiceGuestCommands] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_families(self) -> "SpiceSettings":
+        ids = [value for definition in self.families.values() for value in definition.os_ids]
+        if len(set(ids)) != len(ids):
+            raise ValueError("SPICE guest OS identifiers must be unique across families")
+        if any(not re.fullmatch(r"[a-z][a-z0-9_-]*", family) for family in self.families):
+            raise ValueError("SPICE family names must be lowercase identifiers")
+        return self
+
+
+def load_spice_settings(config: Configuration) -> SpiceSettings:
+    """Load editable guest integration commands only when SPICE is requested."""
+    try:
+        return SpiceSettings.model_validate(read_toml(config.path(config.host.spice_file)))
+    except ValidationError as exc:
+        reasons = "; ".join(
+            error["msg"]
+            for error in exc.errors(include_input=False, include_context=False, include_url=False)
+        )
+        raise VmctlError(f"Invalid SPICE configuration: {reasons}") from exc
+    except ValueError as exc:
+        raise VmctlError("Invalid SPICE configuration") from exc
 
 
 def read_toml(path: Path) -> dict[str, Any]:

@@ -12,6 +12,30 @@ from vmctl.errors import VmctlError
 ModuleGroup = Literal["development", "ai-cli", "ai-desktop"]
 
 
+@dataclass(frozen=True)
+class CloneRequest:
+    reference: str
+    name: str
+    ip: str = "auto"
+    start: bool = False
+    shutdown_source: bool = False
+
+
+@dataclass(frozen=True)
+class HardwareRequest:
+    reference: str
+    cpu: int | None = None
+    memory: str | None = None
+    restart: bool = False
+
+
+@dataclass(frozen=True)
+class SpiceRequest:
+    reference: str
+    restart: bool = False
+    guest_tools: Literal["auto", "skip", "install"] = "auto"
+
+
 def validate_name(name: str) -> str:
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", name) or name.endswith("-"):
         raise VmctlError(
@@ -83,6 +107,11 @@ class VMDetails:
         if self.ip is not None:
             return "reservation"
         return self.addresses[0].source if self.addresses else "unknown"
+
+    @property
+    def spice_enabled(self) -> bool:
+        display = self.config.get("vga", "std").split(",", 1)[0].removeprefix("type=")
+        return display in {"qxl", "qxl2", "qxl3", "qxl4"} or display.startswith("virtio")
 
     @property
     def system_features(self) -> tuple[str, ...]:

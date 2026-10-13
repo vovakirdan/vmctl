@@ -2,6 +2,7 @@
 
 import base64
 import json
+import re
 import shutil
 import struct
 from collections.abc import Callable, Sequence
@@ -122,15 +123,40 @@ class FakeRunner:
                 return CommandResult('{"active": 1}')
             if endpoint.endswith("/agent/network-get-interfaces"):
                 return CommandResult('{"result": []}')
+            if endpoint.endswith("/pending"):
+                return CommandResult("[]")
+            if endpoint.endswith("/agent/get-osinfo"):
+                return CommandResult('{"result": {"id": "ubuntu"}}')
         if args[0] == "pvesm":
             return CommandResult(str(self.root / "snippets" / args[2].split("/")[-1]) + "\n")
         if args[0] == "qm":
             verb = args[1]
+            if verb == "guest":
+                return CommandResult(
+                    '{"pid": 101}' if args[2] == "exec" else '{"exited": true, "exitcode": 0}'
+                )
             vmid = int(args[3]) if verb in {"disk", "cloudinit"} else int(args[2])
+            if verb == "status":
+                return CommandResult("status: " + self.status[vmid] + "\n")
+            if verb in {"shutdown", "reboot"}:
+                self.status[vmid] = "stopped" if verb == "shutdown" else "running"
+                return CommandResult("")
             if verb == "clone":
                 clone_id = int(args[3])
                 clone = dict(self.vms[vmid])
-                clone.pop("template")
+                clone.pop("template", None)
+                for key, value in clone.items():
+                    if key.startswith("net"):
+                        model, _, properties = value.partition(",")
+                        clone[key] = model.partition("=")[0] + "=" + self.mac + "," + properties
+                    elif re.fullmatch(
+                        r"(?:(?:scsi|sata|virtio|ide)[0-9]+|efidisk0|tpmstate0)", key
+                    ) and ("media=cdrom" not in value or "cloudinit" in value):
+                        volume, _, properties = value.partition(",")
+                        storage, separator, _ = volume.partition(":")
+                        if separator:
+                            disk = "cloudinit" if "cloudinit" in value else f"disk-{key}"
+                            clone[key] = f"{storage}:vm-{clone_id}-{disk}," + properties
                 clone["name"] = args[args.index("--name") + 1]
                 clone["description"] = args[args.index("--description") + 1]
                 self.vms[clone_id] = clone

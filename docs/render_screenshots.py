@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import math
 import time
+from dataclasses import replace
 from ipaddress import IPv4Address
 from pathlib import Path
 
@@ -17,9 +18,12 @@ from vmctl.config import Preset, Template, load_config
 from vmctl.errors import VmctlError
 from vmctl.models import (
     VM,
+    CloneRequest,
     CreateRequest,
     CreateResult,
+    HardwareRequest,
     IPObservation,
+    SpiceRequest,
     VMDetails,
     VMMetricPoint,
     VMStats,
@@ -28,10 +32,16 @@ from vmctl.operations import (
     ActionPreview,
     ActionResult,
     Catalog,
+    ClonePreview,
+    CloneResult,
     CreatePreview,
     DeletePreview,
+    HardwarePreview,
+    HardwareResult,
     LifecycleAction,
     Progress,
+    SpicePreview,
+    SpiceResult,
     ValidationSummary,
 )
 from vmctl.services.catalog import build_catalog
@@ -39,6 +49,8 @@ from vmctl.tui.app import VmctlApp
 from vmctl.tui.create import CreateScreen
 from vmctl.tui.details import VMDetailsScreen
 from vmctl.tui.features import FeatureChoices
+from vmctl.tui.manage import ManageAction, ManageScreen
+from vmctl.utils.sizes import parse_size
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -81,6 +93,13 @@ class DemoOperations:
                 {"cores": "2", "memory": "2048"},
                 {"template": "debian", "desktop": "false"},
                 None,
+            ),
+            VMDetails(
+                VM(300, "android-demo", "running", "demo", cpu=4, memory_mib=6144),
+                {"cores": "4", "memory": "6144", "vga": "virtio"},
+                {},
+                None,
+                addresses=(IPObservation(IPv4Address("10.210.0.112"), "dhcp-lease"),),
             ),
         ]
 
@@ -164,6 +183,49 @@ class DemoOperations:
     def action(self, expected: ActionPreview) -> ActionResult:
         raise VmctlError("Screenshot demo does not execute VM requests")
 
+    def plan_clone(self, request: CloneRequest) -> ClonePreview:
+        return ClonePreview(
+            self.info(request.reference).vm,
+            request,
+            "demo-clone",
+            False,
+            notes=("Demo plan: source is restored after copying; duplicate stays stopped.",),
+        )
+
+    def clone(self, expected: ClonePreview, *, request_id: str, progress: Progress) -> CloneResult:
+        raise VmctlError("Screenshot demo does not execute VM requests")
+
+    def plan_update(self, request: HardwareRequest) -> HardwarePreview:
+        vm = self.info(request.reference).vm
+        return HardwarePreview(
+            vm,
+            request,
+            "demo-hardware",
+            vm.cpu,
+            vm.memory_mib,
+            request.cpu or vm.cpu,
+            parse_size(request.memory, unit="MiB") if request.memory else vm.memory_mib,
+        )
+
+    def update(self, expected: HardwarePreview, *, progress: Progress) -> HardwareResult:
+        raise VmctlError("Screenshot demo does not execute VM requests")
+
+    def plan_spice(self, request: SpiceRequest) -> SpicePreview:
+        return SpicePreview(
+            self.info(request.reference).vm,
+            request,
+            "demo-spice",
+            "virtio",
+            "virtio",
+            False,
+            None,
+            False,
+            notes=("VirtIO already supports SPICE. Android guest integration is manual.",),
+        )
+
+    def spice(self, expected: SpicePreview, *, progress: Progress) -> SpiceResult:
+        raise VmctlError("Screenshot demo does not execute VM requests")
+
 
 async def capture() -> None:
     import cairosvg
@@ -188,8 +250,6 @@ async def capture() -> None:
         screen = app.screen
         assert isinstance(screen, VMDetailsScreen)
         # Supply a second fake snapshot to demonstrate live B/s next to RRD history.
-        from dataclasses import replace
-
         initial = screen.snapshot
         assert initial is not None
         screen.loaded(
@@ -228,6 +288,32 @@ async def capture() -> None:
         create.query_one("#group-ai-desktop").scroll_visible(top=True, animate=False)
         await pilot.pause()
         save(app, "ai-desktop")
+        create.dismiss(None)
+        await pilot.pause()
+        await pilot.resize_terminal(140, 60)
+        target = backend.info("300")
+        actions: tuple[ManageAction, ...] = ("clone", "edit", "spice")
+        for action in actions:
+            manage = ManageScreen(action, target)
+            app.push_screen(manage)
+            await pilot.pause()
+            if action == "clone":
+                manage.query_one("#clone-name", Input).value = "android-copy"
+                manage.query_one("#clone-shutdown", Checkbox).value = True
+            elif action == "edit":
+                manage.query_one("#edit-cpu", Input).value = "8"
+                manage.query_one("#edit-memory", Input).value = "8G"
+                manage.query_one("#edit-restart", Checkbox).value = True
+            else:
+                manage.query_one("#spice-tools", Select).value = "skip"
+            await pilot.pause()
+            manage.plan()
+            await app.workers.wait_for_complete()
+            manage.query_one("#manage-target").scroll_visible(top=True, animate=False)
+            await pilot.pause()
+            save(app, f"manage-{action}")
+            manage.dismiss(None)
+            await pilot.pause()
 
 
 if __name__ == "__main__":

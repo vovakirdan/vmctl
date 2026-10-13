@@ -11,7 +11,7 @@ NAT, WireGuard and public bridge configuration are not modified by this tool.
 
 ## Quickstart (Linux / WSL)
 
-Use the same **0.5.0** release for the workstation client and server worker.
+Use the same **0.6.0** release for the workstation client and server worker.
 If the worker is not installed yet, follow [server installation](#install-the-executor-on-the-proxmox-host)
 and [host prerequisites](#host-prerequisites) first.
 
@@ -152,7 +152,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Keep `/opt/vmctl` and server configuration owned by the administrator. The
 absolute worker path works without relying on a login shell's PATH. An existing
 wheel can be supplied to `uv tool install` instead of `.`. Install compatible
-versions on both sides; this release is **0.5.0**, with protocol version **1**.
+versions on both sides; this release is **0.6.0**, with protocol version **1**.
 
 `vmctl --local config init` installs the server TOML files, system features,
 development modules and guest scripts into `/etc/vmctl`. It never installs
@@ -343,8 +343,12 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 
 A wheel from `dist/` may replace `.` on both sides. Reinstalling and `config init`
 preserve existing settings; add new settings explicitly when needed. Version
-0.5.0 adds optional AI CLI agents and Linux desktop apps with grouped selections: update the worker
+0.6.0 adds generic VM duplication, CPU/RAM editing and SPICE setup: update the worker
 as well as the client. Reopen the shell after refreshing completion.
+
+`config init` also adds `/etc/vmctl/spice.toml` when it is missing. Existing
+SPICE settings are preserved; the default `spice_file = "spice.toml"` applies
+even when your older `config.toml` does not contain that field.
 
 `config init` adds the new module files and uv installer, but preserves your
 existing `/etc/vmctl/profiles.toml`. To extend an existing `surge-dev`, add `go`
@@ -360,8 +364,8 @@ worker over your existing SSH alias. These commands assume root access through
 `pxmx` and uv installed at `/root/.local/bin/uv`; adjust that uv path if needed:
 
 ```sh
-scp dist/vmctl-0.5.0-py3-none-any.whl pxmx:/tmp/
-ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.5.0-py3-none-any.whl --python 3.12 --force --reinstall'
+scp dist/vmctl-0.6.0-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.6.0-py3-none-any.whl --python 3.12 --force --reinstall'
 ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
 vmctl config validate
 vmctl tui --read-only
@@ -379,8 +383,9 @@ uv sync --locked
 uv run vmctl tui --read-only
 ```
 
-Read-only mode displays inventory and details and lets you open the creation
-form and check its plan. Create, Start, Shutdown, Reboot and Delete are disabled.
+Read-only mode displays inventory and details and lets you preview creation,
+cloning, resource edits and SPICE setup. Applying changes, Create, Start,
+Shutdown, Reboot and Delete are disabled.
 Plans may perform the same ARP conflict probes as CLI dry-runs; they do not
 clone or change VM configuration, reservations or services. Close the app, then
 enable management when ready:
@@ -403,6 +408,13 @@ worker. With direct `--local` execution, reopen the TUI after editing configurat
 Start, Shutdown, Reboot and Delete operate on the selected VM after a targeted
 confirmation. Shutdown requests a graceful guest shutdown, with no hard-stop
 fallback.
+
+**Clone**, **Edit** and **SPICE** open forms for the selected VM. Each form
+explains its settings and requires a server preview before confirmation.
+Clone defaults to leaving the duplicate stopped; copying a running source
+requires permission for temporary shutdown. Edit and display changes likewise
+require permission for any downtime. These forms can be previewed in read-only
+mode. The action bar fits both wide terminals and 80×24 windows.
 
 The single creation form groups its controls by purpose:
 
@@ -468,6 +480,14 @@ Development selections and their descriptions farther down the same form:
 
 ![Development modules and profiles](docs/screenshots/features.png)
 
+Management forms include source downtime, resource changes and guest-tool status:
+
+![Duplicate an existing VM](docs/screenshots/manage-clone.png)
+
+![Edit CPU and memory](docs/screenshots/manage-edit.png)
+
+![Configure SPICE and guest integration](docs/screenshots/manage-spice.png)
+
 ### Addresses and clipboard
 
 A managed reservation takes display priority. Other private-network addresses
@@ -511,6 +531,9 @@ counters; live rates are available in the TUI.
 | `create NAME TEMPLATE PRESET` | Full clone, resource configuration, DHCP reservation and cloud-init; starts by default |
 | `list` | VM names/IDs, status, resources and reserved/detected IPs with their source |
 | `info NAME_OR_VMID` | Configuration, system/development features and RDP metadata |
+| `clone SOURCE NEW_NAME` | Full duplicate of an existing ordinary VM, including Android; new MAC/IP, stopped by default |
+| `update NAME_OR_VMID --cpu N --memory SIZE` | Change total vCPUs/RAM; explicit `--restart` allows graceful downtime |
+| `spice NAME_OR_VMID` | Prepare SPICE display and optional supported Linux guest integration through QGA |
 | `stats NAME_OR_VMID` | Selected VM CPU, memory, uptime and cumulative network/disk counters |
 | `start NAME_OR_VMID` | Start a stopped VM |
 | `shutdown NAME_OR_VMID [--yes]` | Confirm and request a graceful guest shutdown; no hard-stop fallback |
@@ -623,6 +646,94 @@ and `MiB/GiB` use binary units. Disk requests must be whole GiB. A larger
 template disk is retained and reported; shrinking is never requested. When
 multiple disks exist, the boot order selects the first data disk; otherwise set
 `disk_device = "scsi0"` in the corresponding template entry.
+
+## Duplicate and edit existing VMs
+
+The TUI now offers **Clone**, **Edit** and **SPICE** for the selected VM. Each form
+checks a server preview, confirms the exact VM and requested changes, and reports
+progress. Read-only mode allows previewing these forms while disabling Apply.
+If the VM, requested settings or relevant server configuration changes after
+preview, execution refuses the old confirmation.
+
+### Full duplicates, including Android
+
+`create` provisions a configured cloud template. `clone` copies an existing
+ordinary VM's disks and virtual hardware, including installed apps, accounts,
+credentials and identity files; it works without cloud-init or Linux template
+metadata. New VMIDs and NIC MACs come from Proxmox. The duplicate receives its own
+private DHCP reservation and stays stopped by default. A running source requires
+explicit permission for graceful shutdown; its prior running state is restored
+after copying. There is no forced-stop fallback.
+
+```sh
+vmctl clone android-01 android-test --shutdown-source --dry-run
+vmctl clone android-01 android-test --shutdown-source
+vmctl clone 300 android-test --shutdown-source --start
+```
+
+For cloud-init sources, vmctl creates a clone-owned hostname/DHCP-only snippet;
+it does not rerun source development modules or recreate users/passwords.
+Installed state remains on the copied disks. Foreign/custom cloud-init payloads,
+hooks, passthrough, external/shared disks, pending changes and unsupported NIC
+layouts are rejected before cloning. The supported layout is one `net0` on the
+configured private bridge, without VLAN tags/trunks. Templates/reserved VMIDs
+are protected; use `create` for configured cloud templates.
+
+Review copied logins, SSH identities and application IDs before using a duplicate.
+Guest-configured static IPs may need adjustment before starting a non-cloud clone.
+Cloning is a copy of guest state, not an OS reinstall or credential reset.
+Source-owned snippets and reservations are never released by deleting a clone.
+Uncertain clone outcomes are retained for inspection rather than automatically
+destroying a VM or restarting a source while copying may still be active.
+
+### CPU and memory
+
+```sh
+vmctl update android-01 --cpu 8 --memory 8G --restart --dry-run
+vmctl update android-01 --cpu 8 --memory 8G --restart
+vmctl update 300 --memory 12G --restart --dry-run
+```
+
+`--cpu` is the total vCPU count; it must fit the existing socket topology.
+Changing a running VM requires `--restart`: vmctl requests graceful shutdown,
+checks that it stopped, changes only requested fields, then restores its running
+state. A stopped VM stays stopped. Matching values are a no-op. Explicit NUMA,
+unsupported vCPU topology, locks and pending configuration changes require
+manual review. Disk size is not edited by this command.
+
+After a definite failure, only known changed fields are restored while the VM
+is definitely stopped and its other configuration still matches. Timeouts or
+unverifiable state stop automatic compensation and report uncertainty.
+
+### SPICE display and guest integration
+
+```sh
+vmctl spice android-01 --guest-tools skip --dry-run
+vmctl spice android-01 --guest-tools skip
+vmctl spice workstation --restart --guest-tools auto --dry-run
+vmctl spice workstation --restart --guest-tools install
+```
+
+Current Proxmox enables SPICE for QXL and VirtIO display types. vmctl preserves
+compatible displays, including Android's `virtio`; unsupported displays use QXL.
+A display change on a running VM requires explicit `--restart`. Configuration
+alone does not prove clipboard, resizing or guest session readiness.
+
+Guest modes are `auto` (install when eligible), `skip` (display only), and
+`install` (require eligibility). Linux packages are installed through the QEMU
+guest agent, without copying guest SSH keys or credentials. The VM must be running
+with an available agent and a supported detected OS. Android and guests without
+an agent receive an explicit manual/unavailable result rather than a false success.
+Reopening the guest's desktop session may be needed for user-session integration.
+
+Package-manager commands, OS IDs and timeouts are editable in server
+[`spice.toml`](config/spice.toml), selected by `spice_file` in `config.toml`.
+They run inside the guest, never on Proxmox. A guest process can continue after
+polling or SSH times out; vmctl reports its PID when known and never automatically
+submits it again, rolls back the display or reboots during an uncertain install.
+Connect with your private Proxmox SPICE console/virt-viewer workflow after setup;
+this action does not launch a local viewer or issue a connection ticket.
+No firewall, public port-forward, bridge or WireGuard settings change.
 
 ## Editable configuration and bootstrap
 
@@ -1133,15 +1244,19 @@ vmctl/
   config/
     client.toml
     config.toml, templates.toml, presets.toml, profiles.toml
+    spice.toml              # OS-specific QEMU-agent guest installation commands
     bootstrap/{system,modules,scripts}/
   src/vmctl/
     cli.py, completion.py, client_config.py, frontend.py
-    tui/                    # Textual app, creation form, per-VM metrics and dialogs
+    tui/                    # Creation/management forms, per-VM metrics and dialogs
     operations.py, protocol.py, ssh.py
     worker.py, local.py
     models.py, config.py, errors.py
     services/catalog.py     # Read-only frontend choices from server TOML
     services/metrics.py     # Selected-VM current gauges and RRD history
+    services/clone_vm.py    # Guarded full duplication and owned-resource cleanup
+    services/hardware.py   # CPU/RAM edits with graceful downtime and rollback
+    services/spice.py      # SPICE display and asynchronous guest installation
     network/discovery.py    # Read-only private-network IP observations
     {proxmox,network,bootstrap,services,utils}/
   docs/screenshots/          # Sanitized TUI captures

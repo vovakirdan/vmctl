@@ -8,28 +8,45 @@ from vmctl.bootstrap.models import load_modules
 from vmctl.bootstrap.renderer import CloudInitRenderer
 from vmctl.bootstrap.resolver import validate_definitions
 from vmctl.bootstrap.system import validate_system_features
-from vmctl.config import Configuration, Preset, Template, load_config
+from vmctl.config import Configuration, Preset, Template, load_config, load_spice_settings
 from vmctl.errors import VmctlError
-from vmctl.models import CreateRequest, CreateResult, VMDetails, VMStats
+from vmctl.models import (
+    CloneRequest,
+    CreateRequest,
+    CreateResult,
+    HardwareRequest,
+    SpiceRequest,
+    VMDetails,
+    VMStats,
+)
 from vmctl.network.allocator import AddressAllocator
 from vmctl.network.dnsmasq import DnsmasqReservations
 from vmctl.operations import (
     ActionPreview,
     ActionResult,
     Catalog,
+    ClonePreview,
+    CloneResult,
     CreatePreview,
     DeletePreview,
+    HardwarePreview,
+    HardwareResult,
     LifecycleAction,
     Progress,
+    SpicePreview,
+    SpiceResult,
     ValidationSummary,
 )
 from vmctl.proxmox.client import ProxmoxClient
 from vmctl.services.catalog import build_catalog
+from vmctl.services.clone_vm import CloneVMService
 from vmctl.services.create_vm import CreateVMService
 from vmctl.services.delete_vm import DeleteVMService
+from vmctl.services.hardware import HardwareService
 from vmctl.services.lifecycle import LifecycleService
 from vmctl.services.metrics import vm_stats
 from vmctl.services.queries import info_vm, list_vms
+from vmctl.services.spice import SpiceService
 from vmctl.utils.subprocess import SubprocessRunner
 
 Dependencies = Callable[
@@ -59,6 +76,27 @@ class LocalOperations:
         )
         self.deleter = DeleteVMService(self.config, self.client, self.reservations)
         self.lifecycle = LifecycleService(self.config, self.client)
+        self.cloner = CloneVMService(self.config, self.client, self.reservations, allocator)
+        self.hardware = HardwareService(self.config, self.client)
+        self.spicer = SpiceService(self.config, self.client)
+
+    def plan_clone(self, request: CloneRequest) -> ClonePreview:
+        return self.cloner.plan(request)
+
+    def clone(self, expected: ClonePreview, *, request_id: str, progress: Progress) -> CloneResult:
+        return self.cloner.clone(expected, request_id=request_id, progress=progress)
+
+    def plan_update(self, request: HardwareRequest) -> HardwarePreview:
+        return self.hardware.plan(request)
+
+    def update(self, expected: HardwarePreview, *, progress: Progress) -> HardwareResult:
+        return self.hardware.update(expected, progress=progress)
+
+    def plan_spice(self, request: SpiceRequest) -> SpicePreview:
+        return self.spicer.plan(request)
+
+    def spice(self, expected: SpicePreview, *, progress: Progress) -> SpiceResult:
+        return self.spicer.apply(expected, progress=progress)
 
     def plan_create(self, request: CreateRequest) -> CreatePreview:
         plan = self.creator.plan(request)
@@ -126,6 +164,7 @@ class LocalOperations:
         return self.config.presets
 
     def validate_config(self) -> ValidationSummary:
+        load_spice_settings(self.config)
         modules = load_modules(self.config)
         validate_definitions(modules, self.config.profiles)
         features = validate_system_features(self.config)

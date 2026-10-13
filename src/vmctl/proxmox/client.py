@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from vmctl.config import Configuration
-from vmctl.errors import VmctlError
+from vmctl.errors import CommandError, VmctlError
 from vmctl.models import VM
 from vmctl.proxmox.parser import parse_config, parse_json, parse_vms
 from vmctl.utils.subprocess import CommandResult, Runner
@@ -25,12 +25,14 @@ class ProxmoxClient:
         timeout: int | None = None,
         sensitive: tuple[str, ...] = (),
         stream: Callable[[str], None] | None = None,
+        check: bool = True,
     ) -> CommandResult:
         return self.runner.run(
             [self.config.host.binaries.get(binary, binary), *args],
             timeout=timeout or self.config.host.proxmox.command_timeout,
             sensitive=sensitive,
             stream=stream,
+            check=check,
         )
 
     def inventory(self) -> list[VM]:
@@ -63,6 +65,67 @@ class ProxmoxClient:
         if not re.fullmatch(r"[a-z][a-z0-9-]*", status):
             raise VmctlError("Proxmox returned an invalid VM status")
         return status
+
+    def pending(self, vmid: int) -> object:
+        return parse_json(
+            self.command(
+                "pvesh",
+                "get",
+                f"/nodes/{self.node}/qemu/{vmid}/pending",
+                "--output-format",
+                "json",
+            ).stdout
+        )
+
+    def get_os_info(self, vmid: int, *, timeout: int = 10) -> object:
+        return parse_json(
+            self.command(
+                "pvesh",
+                "get",
+                f"/nodes/{self.node}/qemu/{vmid}/agent/get-osinfo",
+                "--output-format",
+                "json",
+                timeout=timeout,
+            ).stdout
+        )
+
+    def guest_exec(self, vmid: int, arguments: tuple[str, ...], *, timeout: int = 10) -> int:
+        """Submit once; polling timeout never terminates the guest process."""
+        result = self.command(
+            "qm",
+            "guest",
+            "exec",
+            str(vmid),
+            "--synchronous",
+            "0",
+            "--",
+            *arguments,
+            timeout=timeout,
+            sensitive=arguments,
+            check=False,
+        )
+        if result.returncode:
+            raise CommandError("qm", "Guest command submission failed; output withheld")
+        data = parse_json(result.stdout)
+        if not isinstance(data, dict) or type(data.get("pid")) is not int or data["pid"] <= 0:
+            raise VmctlError(
+                "Guest command returned no valid PID; inspect the guest before retrying"
+            )
+        return int(data["pid"])
+
+    def guest_exec_status(self, vmid: int, pid: int, *, timeout: int = 10) -> object:
+        result = self.command(
+            "qm",
+            "guest",
+            "exec-status",
+            str(vmid),
+            str(pid),
+            timeout=timeout,
+            check=False,
+        )
+        if result.returncode:
+            raise CommandError("qm", "Guest command status unavailable; output withheld")
+        return parse_json(result.stdout)
 
     def guest_interfaces(self, vmid: int) -> object:
         return parse_json(

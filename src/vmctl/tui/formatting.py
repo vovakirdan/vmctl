@@ -23,6 +23,7 @@ def details_text(details: VMDetails) -> str:
         f"CPU: {vm.cpu} vCPU   RAM: {vm.memory_mib / 1024:g} GiB",
         f"IP: {details.display_ip or 'unknown'} (source: {details.ip_source})",
         f"Desktop: {'yes' if details.desktop else 'no' if details.desktop is False else 'unknown'}",
+        "SPICE display: " + ("enabled (configuration)" if details.spice_enabled else "disabled"),
         "",
         "System features: " + (", ".join(details.system_features) or "none / unknown"),
         "Optional modules: " + (", ".join(details.modules) or "none / unknown"),

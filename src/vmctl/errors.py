@@ -44,11 +44,12 @@ class UnknownOutcomeError(VmctlError):
 
 
 class UncertainOperationError(VmctlError):
-    """A submitted host action may continue after its command process timed out."""
+    """A submitted host action was interrupted or its outcome cannot be verified."""
 
     def __init__(self, vmid: int, operation: str) -> None:
         self.vmid = vmid
         super().__init__(
-            f"Outcome of {operation} for VM {vmid} is uncertain after a Proxmox command timeout. "
+            f"Outcome of {operation} for VM {vmid} is uncertain after an interrupted "
+            "or unverifiable Proxmox action. "
             "Inspect VM state and tasks before retrying; no automatic retry was performed"
         )

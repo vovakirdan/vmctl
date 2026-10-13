@@ -19,6 +19,8 @@ from vmctl.tui.create import CreateScreen
 from vmctl.tui.details import VMDetailsScreen
 from vmctl.tui.dialogs import ConfirmScreen, TextScreen
 from vmctl.tui.formatting import details_text, error_text, result_text
+from vmctl.tui.manage import ManageAction, ManageResult, ManageScreen
+from vmctl.tui.manage import result_text as manage_result_text
 from vmctl.tui.table import VMTable
 from vmctl.utils.clipboard import copy_native
 
@@ -86,6 +88,9 @@ class VmctlApp(App[None]):
             yield Button("New VM", id="new", variant="primary")
             yield Button("Refresh", id="refresh")
             yield Button("Details", id="details-button")
+            yield Button("Clone", id="clone-action")
+            yield Button("Edit", id="edit-action")
+            yield Button("SPICE", id="spice-action")
             yield Button("Start", id="start-action")
             yield Button("Shutdown", id="shutdown-action")
             yield Button("Reboot", id="reboot-action")
@@ -270,6 +275,13 @@ class VmctlApp(App[None]):
         main.query_one("#new", Button).disabled = self.busy or self.catalog_data is None
         main.query_one("#refresh", Button).disabled = self.busy
         main.query_one("#details-button", Button).disabled = self.busy or current is None
+        for action in ("clone", "edit", "spice"):
+            main.query_one(f"#{action}-action", Button).disabled = (
+                self.busy
+                or self.stale
+                or current is None
+                or bool(current and (current.vm.template or 9000 <= current.vm.vmid <= 9099))
+            )
         for action in ("start", "shutdown", "reboot", "delete"):
             disabled = (
                 self.read_only
@@ -347,6 +359,10 @@ class VmctlApp(App[None]):
                 self.action_refresh()
             case "details-button":
                 self.open_details()
+            case "clone-action" | "edit-action" | "spice-action":
+                from typing import cast
+
+                self.open_manage(cast(ManageAction, event.button.id.removesuffix("-action")))
             case "start-action" | "shutdown-action" | "reboot-action":
                 action = {
                     "start-action": "start",
@@ -363,6 +379,24 @@ class VmctlApp(App[None]):
 
     def action_search(self) -> None:
         self.screen_stack[0].query_one("#search", Input).focus()
+
+    def open_manage(self, action: ManageAction) -> None:
+        current = self.current()
+        if (
+            current is None
+            or self.busy
+            or self.stale
+            or current.vm.template
+            or 9000 <= current.vm.vmid <= 9099
+        ):
+            return
+        self.push_screen(ManageScreen(action, current), self.managed)
+
+    def managed(self, result: ManageResult | None) -> None:
+        if result is not None:
+            self.selected_id = result.vm.vmid
+            self.action_refresh()
+            self.push_screen(TextScreen("Management result", manage_result_text(result)))
 
     def action_new(self) -> None:
         if self.busy or self.catalog_data is None:

@@ -16,13 +16,22 @@ from pydantic import (
 )
 
 from vmctl.errors import VmctlError
-from vmctl.models import CreateRequest
-from vmctl.operations import ActionPreview, DeletePreview, LifecycleAction
+from vmctl.models import CloneRequest, CreateRequest, HardwareRequest, SpiceRequest
+from vmctl.operations import (
+    ActionPreview,
+    ClonePreview,
+    DeletePreview,
+    HardwarePreview,
+    LifecycleAction,
+    SpicePreview,
+)
 
 PROTOCOL_VERSION: Literal[1] = 1
 MAX_MESSAGE_BYTES = 1024 * 1024
 RequestID = Annotated[str, Field(pattern=r"^[0-9a-f]{32}$", min_length=32, max_length=32)]
-MUTATING_OPERATIONS = frozenset({"create", "delete", "start", "shutdown", "reboot"})
+MUTATING_OPERATIONS = frozenset(
+    {"create", "delete", "start", "shutdown", "reboot", "clone", "update", "spice"}
+)
 
 
 class WireModel(BaseModel):
@@ -82,6 +91,45 @@ class StatsParameters(ReferenceParameters):
     history: bool = False
 
 
+class CloneParameters(ReferenceParameters):
+    name: str = Field(min_length=1, max_length=63)
+    ip: str = Field(default="auto", max_length=64)
+    start: bool = False
+    shutdown_source: bool = False
+
+    def to_domain(self) -> CloneRequest:
+        return CloneRequest(**self.model_dump())
+
+
+class HardwareParameters(ReferenceParameters):
+    cpu: int | None = Field(default=None, gt=0, le=512)
+    memory: str | None = Field(default=None, max_length=32)
+    restart: bool = False
+
+    def to_domain(self) -> HardwareRequest:
+        return HardwareRequest(**self.model_dump())
+
+
+class SpiceParameters(ReferenceParameters):
+    restart: bool = False
+    guest_tools: Literal["auto", "skip", "install"] = "auto"
+
+    def to_domain(self) -> SpiceRequest:
+        return SpiceRequest(**self.model_dump())
+
+
+class CloneExpected(WireModel):
+    expected: ClonePreview
+
+
+class HardwareExpected(WireModel):
+    expected: HardwarePreview
+
+
+class SpiceExpected(WireModel):
+    expected: SpicePreview
+
+
 class DeleteParameters(WireModel):
     vmid: int = Field(gt=0)
     name: str = Field(min_length=1, max_length=63)
@@ -132,6 +180,36 @@ class StatsMessage(RequestBase):
     parameters: StatsParameters
 
 
+class PlanCloneMessage(RequestBase):
+    operation: Literal["plan_clone"] = "plan_clone"
+    parameters: CloneParameters
+
+
+class CloneMessage(RequestBase):
+    operation: Literal["clone"] = "clone"
+    parameters: CloneExpected
+
+
+class PlanUpdateMessage(RequestBase):
+    operation: Literal["plan_update"] = "plan_update"
+    parameters: HardwareParameters
+
+
+class UpdateMessage(RequestBase):
+    operation: Literal["update"] = "update"
+    parameters: HardwareExpected
+
+
+class PlanSpiceMessage(RequestBase):
+    operation: Literal["plan_spice"] = "plan_spice"
+    parameters: SpiceParameters
+
+
+class SpiceMessage(RequestBase):
+    operation: Literal["spice"] = "spice"
+    parameters: SpiceExpected
+
+
 class DeleteMessage(RequestBase):
     operation: Literal["delete"] = "delete"
     parameters: DeleteParameters
@@ -156,6 +234,12 @@ Request = Annotated[
     CreateMessage
     | ReferenceMessage
     | StatsMessage
+    | PlanCloneMessage
+    | CloneMessage
+    | PlanUpdateMessage
+    | UpdateMessage
+    | PlanSpiceMessage
+    | SpiceMessage
     | DeleteMessage
     | PlanActionMessage
     | ActionMessage

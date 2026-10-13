@@ -1,0 +1,20 @@
+# Guest commands run as root through the QEMU guest agent, never on the Proxmox host.
+# They install desktop session integration; no display readiness is inferred.
+timeout_seconds = 300
+poll_interval_seconds = 2
+agent_timeout_seconds = 10
+
+[families.debian]
+os_ids = ["ubuntu", "debian"]
+commands = [
+    ["/usr/bin/env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update"],
+    ["/usr/bin/env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "spice-vdagent"],
+]
+
+[families.rhel]
+os_ids = ["rocky", "rhel", "almalinux", "centos", "fedora"]
+commands = [["dnf", "install", "-y", "spice-vdagent"]]
+
+[families.alpine]
+os_ids = ["alpine"]
+commands = [["apk", "add", "spice-vdagent"]]

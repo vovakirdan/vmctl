@@ -8,9 +8,9 @@ Screen { background: $surface; }
 #details { height: auto; }
 .narrow #details-panel { display: none; }
 .narrow #vm-table { width: 1fr; }
-#main-actions { grid-size: 8 1; grid-gutter: 0 1; height: 3; margin: 0 1; }
+#main-actions { grid-size: 6 2; grid-gutter: 0 1; height: 6; margin: 0 1; }
 #main-actions Button { min-width: 0; width: 1fr; }
-.narrow #main-actions { grid-size: 4 2; height: 6; }
+.narrow #main-actions { grid-size: 4 3; height: 9; }
 ModalScreen { align: center middle; background: $background 60%; }
 .dialog { width: 68; max-width: 95%; height: auto; max-height: 90%; padding: 1 2; border: thick $primary; background: $surface; }
 .large-dialog { width: 90; height: 80%; }
@@ -37,6 +37,15 @@ ModalScreen { align: center middle; background: $background 60%; }
 #create-preview { border-left: solid $primary; padding-left: 1; }
 #create-error, #password-error, #features-error { color: $error; height: auto; }
 #create-buttons { padding: 0 2; margin: 0; }
+#manage-title { height: 2; padding: 0 2; }
+#manage-scroll { height: 1fr; padding: 0 2; }
+#manage-scroll Label, #manage-scroll Static { height: auto; }
+#manage-scroll Static { margin-bottom: 1; }
+#manage-scroll Input, #manage-scroll Select { margin-bottom: 1; }
+#manage-scroll Checkbox { width: 1fr; height: 3; }
+#manage-preview { border-left: solid $primary; padding-left: 1; }
+#manage-error { color: $error; height: auto; }
+#manage-buttons { padding: 0 2; margin: 0; }
 .metrics-dialog { width: 112; height: 92%; max-height: 95%; padding: 1 2; }
 #address-toolbar { height: 3; }
 #vm-address { width: 1fr; padding-top: 1; }

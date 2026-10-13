@@ -18,20 +18,40 @@ from vmctl.protocol import (
     MAX_MESSAGE_BYTES,
     REQUEST_ADAPTER,
     ActionMessage,
+    CloneMessage,
     CreateMessage,
     DeleteMessage,
     Event,
     PlanActionMessage,
+    PlanCloneMessage,
+    PlanSpiceMessage,
+    PlanUpdateMessage,
     QueryMessage,
     ReferenceMessage,
     Request,
+    SpiceMessage,
     StatsMessage,
+    UpdateMessage,
 )
 
 BackendFactory = Callable[[], Operations]
 
 
 def dispatch(request: Request, backend: Operations, progress: Callable[[str], None]) -> object:
+    if isinstance(request, PlanCloneMessage):
+        return backend.plan_clone(request.parameters.to_domain())
+    if isinstance(request, CloneMessage):
+        return backend.clone(
+            request.parameters.expected, request_id=request.request_id, progress=progress
+        )
+    if isinstance(request, PlanUpdateMessage):
+        return backend.plan_update(request.parameters.to_domain())
+    if isinstance(request, UpdateMessage):
+        return backend.update(request.parameters.expected, progress=progress)
+    if isinstance(request, PlanSpiceMessage):
+        return backend.plan_spice(request.parameters.to_domain())
+    if isinstance(request, SpiceMessage):
+        return backend.spice(request.parameters.expected, progress=progress)
     if isinstance(request, CreateMessage):
         domain = request.parameters.to_domain()
         if request.operation == "plan_create":

@@ -22,7 +22,7 @@ from vmctl.client_config import (
 )
 from vmctl.errors import VmctlError
 from vmctl.frontend import FrontendSettings, build_operations, load_public_key, target_label
-from vmctl.models import CreateRequest
+from vmctl.models import CloneRequest, CreateRequest, HardwareRequest, SpiceRequest
 from vmctl.operations import LifecycleAction, Operations
 from vmctl.services.init_config import initialize_config
 from vmctl.utils.passwords import hash_desktop_password
@@ -348,6 +348,184 @@ VMReference = Annotated[
 ]
 
 
+@app.command(
+    help="Full-clone an existing VM, including non-cloud guests. Copies disks and login state; the new VM stays stopped by default."
+)
+def clone(
+    ctx: typer.Context,
+    reference: VMReference,
+    name: Annotated[str, typer.Argument(help="Unique name for the duplicate VM.")],
+    ip: Annotated[
+        str,
+        typer.Option(
+            help="auto or a free IPv4 in the managed pool.", autocompletion=completion.addresses
+        ),
+    ] = "auto",
+    start: Annotated[
+        bool,
+        typer.Option(
+            "--start/--no-start", help="Start the duplicate after cloning; default is stopped."
+        ),
+    ] = False,
+    shutdown_source: Annotated[
+        bool,
+        typer.Option(
+            help="Temporarily shut down a running source gracefully and restore its running state after copying."
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option(help="Inspect the clone plan without changing the source or creating a VM."),
+    ] = False,
+    yes: Annotated[
+        bool,
+        typer.Option(
+            "--yes", "-y", help="Skip confirmation of copying guest data and any source downtime."
+        ),
+    ] = False,
+) -> None:
+    with present_errors():
+        backend = operations(ctx)
+        preview = backend.plan_clone(CloneRequest(reference, name, ip, start, shutdown_source))
+        console.print(f"Full clone: VM {preview.source.vmid} ({preview.source.name}) -> {name}")
+        console.print(f"VMID: allocated by Proxmox; IP: {ip}; start duplicate: {start}")
+        for note in preview.notes:
+            console.print(note)
+        if dry_run:
+            console.print("Dry run: no VM, reservation or source state changed")
+            return
+        if not yes:
+            typer.confirm(
+                f"Duplicate VM {preview.source.vmid} ({preview.source.name}), including its data and login state?",
+                abort=True,
+            )
+        result = backend.clone(preview, request_id=uuid.uuid4().hex, progress=console.print)
+        console.print(f"VM cloned successfully: {result.vm.vmid} ({result.vm.name})")
+        console.print(f"Status: {result.vm.status}; MAC: {result.mac}; IP: {result.ip}")
+        for note in result.notes:
+            console.print(note)
+
+
+@app.command(
+    help="Edit an existing VM's total vCPUs and RAM. Running VMs require --restart when resources change; only graceful shutdown is used."
+)
+def update(
+    ctx: typer.Context,
+    reference: VMReference,
+    cpu: Annotated[
+        int | None,
+        typer.Option(
+            min=1,
+            max=512,
+            help="Total vCPUs, preserving the VM's socket count.",
+            autocompletion=completion.cpu,
+        ),
+    ] = None,
+    memory: Annotated[
+        str | None,
+        typer.Option(help="RAM size: bare MiB or 16G / 16384M.", autocompletion=completion.memory),
+    ] = None,
+    restart: Annotated[
+        bool,
+        typer.Option(
+            help="Allow graceful shutdown and start when a running VM needs a hardware change."
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool, typer.Option(help="Show old/new resource values without changing the VM.")
+    ] = False,
+    yes: Annotated[
+        bool, typer.Option("--yes", "-y", help="Skip resource change and downtime confirmation.")
+    ] = False,
+) -> None:
+    with present_errors():
+        backend = operations(ctx)
+        preview = backend.plan_update(HardwareRequest(reference, cpu, memory, restart))
+        console.print(
+            f"VM {preview.vm.vmid} ({preview.vm.name}): CPU {preview.cpu} -> {preview.new_cpu} vCPU; memory {preview.memory_mib} -> {preview.new_memory_mib} MiB"
+        )
+        for note in preview.notes:
+            console.print(note)
+        if dry_run:
+            console.print("Dry run: resources and power state unchanged")
+            return
+        if not yes:
+            typer.confirm(
+                f"Apply these resources to VM {preview.vm.vmid} ({preview.vm.name})?", abort=True
+            )
+        result = backend.update(preview, progress=console.print)
+        console.print(
+            f"VM resources updated: CPU {result.cpu} vCPU; memory {result.memory_mib} MiB; status {result.vm.status}"
+        )
+        for note in result.notes:
+            console.print(note)
+
+
+@app.command(
+    help="Prepare SPICE display and optionally install Linux guest integration through the QEMU guest agent. Compatible VirtIO/QXL displays are preserved."
+)
+def spice(
+    ctx: typer.Context,
+    reference: VMReference,
+    restart: Annotated[
+        bool,
+        typer.Option(
+            help="Allow graceful shutdown/start if the display must change on a running VM."
+        ),
+    ] = False,
+    guest_tools: Annotated[
+        str,
+        typer.Option(
+            help="auto installs only through an available supported Linux agent; skip changes display only; install requires guest support."
+        ),
+    ] = "auto",
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            help="Inspect display/guest eligibility without stopping, configuring or executing guest commands."
+        ),
+    ] = False,
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "-y", help="Skip display/guest package and downtime confirmation."),
+    ] = False,
+) -> None:
+    with present_errors():
+        if guest_tools not in {"auto", "skip", "install"}:
+            raise VmctlError("--guest-tools must be auto, skip or install")
+        from typing import Literal, cast
+
+        backend = operations(ctx)
+        preview = backend.plan_spice(
+            SpiceRequest(reference, restart, cast(Literal["auto", "skip", "install"], guest_tools))
+        )
+        console.print(
+            f"VM {preview.vm.vmid} ({preview.vm.name}): display {preview.current_vga} -> {preview.target_vga}"
+        )
+        console.print(
+            f"Guest tools eligible: {preview.guest_tools_possible}; family: {preview.guest_family or 'unknown'}"
+        )
+        for note in preview.notes:
+            console.print(note)
+        if dry_run:
+            console.print("Dry run: no display, power or guest package changes")
+            return
+        if not yes:
+            typer.confirm(
+                f"Prepare SPICE for VM {preview.vm.vmid} ({preview.vm.name})?", abort=True
+            )
+        result = backend.spice(preview, progress=console.print)
+        console.print(
+            f"SPICE display enabled: {result.host_enabled}; display: {result.vga}; guest tools: {result.guest_tools_status}"
+        )
+        if result.guest_pid is not None:
+            console.print(f"Guest process PID: {result.guest_pid}")
+        for note in result.notes:
+            console.print(note)
+        if result.guest_tools_status in {"failed", "uncertain"}:
+            raise typer.Exit(1)
+
+
 def lifecycle_command(
     ctx: typer.Context, reference: str, action: LifecycleAction, *, yes: bool, dry_run: bool
 ) -> None:
@@ -470,6 +648,9 @@ def info(
         table.add_row("VMID", str(details.vm.vmid))
         table.add_row("Status", details.vm.status)
         table.add_row("Node", details.vm.node)
+        table.add_row(
+            "SPICE display", "enabled (configuration)" if details.spice_enabled else "disabled"
+        )
         table.add_row("Managed IP", str(details.ip) if details.ip else "unknown")
         table.add_row("IP", str(details.display_ip) if details.display_ip else "unknown")
         table.add_row("IP source", details.ip_source)

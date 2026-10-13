@@ -6,7 +6,18 @@ from ipaddress import IPv4Address
 from typing import Literal, Protocol
 
 from vmctl.config import Preset, Template
-from vmctl.models import VM, CreateRequest, CreateResult, ModuleGroup, Resources, VMDetails, VMStats
+from vmctl.models import (
+    VM,
+    CloneRequest,
+    CreateRequest,
+    CreateResult,
+    HardwareRequest,
+    ModuleGroup,
+    Resources,
+    SpiceRequest,
+    VMDetails,
+    VMStats,
+)
 
 Progress = Callable[[str], None]
 LifecycleAction = Literal["start", "shutdown", "reboot"]
@@ -46,6 +57,70 @@ class DeletePreview:
 
 
 @dataclass(frozen=True)
+class ClonePreview:
+    source: VM
+    request: CloneRequest
+    fingerprint: str
+    cloud_init: bool
+    notes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class CloneResult:
+    vm: VM
+    source_vmid: int
+    mac: str
+    ip: IPv4Address
+    cloud_init: bool
+    source_restored: bool
+    notes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class HardwarePreview:
+    vm: VM
+    request: HardwareRequest
+    fingerprint: str
+    cpu: int
+    memory_mib: int
+    new_cpu: int
+    new_memory_mib: int
+    notes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class HardwareResult:
+    vm: VM
+    cpu: int
+    memory_mib: int
+    restarted: bool
+    notes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class SpicePreview:
+    vm: VM
+    request: SpiceRequest
+    fingerprint: str
+    current_vga: str
+    target_vga: str
+    needs_shutdown: bool
+    guest_family: str | None
+    guest_tools_possible: bool
+    notes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class SpiceResult:
+    vm: VM
+    vga: str
+    host_enabled: bool
+    guest_tools_status: Literal["not-requested", "unavailable", "installed", "failed", "uncertain"]
+    guest_pid: int | None = None
+    notes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class ValidationSummary:
     templates: int
     presets: int
@@ -77,6 +152,14 @@ class Catalog:
 
 
 class Operations(Protocol):
+    def plan_clone(self, request: CloneRequest) -> ClonePreview: ...
+    def clone(
+        self, expected: ClonePreview, *, request_id: str, progress: Progress
+    ) -> CloneResult: ...
+    def plan_update(self, request: HardwareRequest) -> HardwarePreview: ...
+    def update(self, expected: HardwarePreview, *, progress: Progress) -> HardwareResult: ...
+    def plan_spice(self, request: SpiceRequest) -> SpicePreview: ...
+    def spice(self, expected: SpicePreview, *, progress: Progress) -> SpiceResult: ...
     def plan_create(self, request: CreateRequest) -> CreatePreview: ...
     def create(
         self, request: CreateRequest, *, request_id: str, progress: Progress

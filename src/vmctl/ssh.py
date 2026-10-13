@@ -8,6 +8,7 @@ import subprocess
 import threading
 import time
 import uuid
+from dataclasses import asdict
 from typing import Protocol, TypeVar
 
 from pydantic import TypeAdapter, ValidationError
@@ -15,15 +16,29 @@ from pydantic import TypeAdapter, ValidationError
 from vmctl.client_config import ConnectionConfig
 from vmctl.config import Preset, Template
 from vmctl.errors import ProtocolError, RepeatedRequestError, UnknownOutcomeError, VmctlError
-from vmctl.models import CreateRequest, CreateResult, VMDetails, VMStats
+from vmctl.models import (
+    CloneRequest,
+    CreateRequest,
+    CreateResult,
+    HardwareRequest,
+    SpiceRequest,
+    VMDetails,
+    VMStats,
+)
 from vmctl.operations import (
     ActionPreview,
     ActionResult,
     Catalog,
+    ClonePreview,
+    CloneResult,
     CreatePreview,
     DeletePreview,
+    HardwarePreview,
+    HardwareResult,
     LifecycleAction,
     Progress,
+    SpicePreview,
+    SpiceResult,
     ValidationSummary,
 )
 from vmctl.protocol import (
@@ -31,19 +46,31 @@ from vmctl.protocol import (
     MUTATING_OPERATIONS,
     ActionMessage,
     ActionParameters,
+    CloneExpected,
+    CloneMessage,
+    CloneParameters,
     CreateMessage,
     CreateParameters,
     DeleteMessage,
     DeleteParameters,
     Event,
+    HardwareExpected,
+    HardwareParameters,
     PlanActionMessage,
     PlanActionParameters,
+    PlanCloneMessage,
+    PlanSpiceMessage,
+    PlanUpdateMessage,
     QueryMessage,
     ReferenceMessage,
     ReferenceParameters,
     Request,
+    SpiceExpected,
+    SpiceMessage,
+    SpiceParameters,
     StatsMessage,
     StatsParameters,
+    UpdateMessage,
     encode_request,
 )
 
@@ -103,6 +130,8 @@ class SSHTransport:
         mutating = request.operation in MUTATING_OPERATIONS
         if isinstance(request, DeleteMessage | ActionMessage):
             vmid = request.parameters.vmid
+        elif isinstance(request, UpdateMessage | SpiceMessage):
+            vmid = request.parameters.expected.vm.vmid
         terminal: Event | None = None
         hello = False
         secret = (
@@ -241,6 +270,8 @@ class SSHOperations:
                 vmid = (
                     request.parameters.vmid
                     if isinstance(request, DeleteMessage | ActionMessage)
+                    else request.parameters.expected.vm.vmid
+                    if isinstance(request, UpdateMessage | SpiceMessage)
                     else event.vmid
                 )
                 raise UnknownOutcomeError(request.request_id, vmid) from exc
@@ -263,6 +294,53 @@ class SSHOperations:
             parameters=CreateParameters.from_domain(request),
         )
         return self._read(message, TypeAdapter(CreateResult), progress)
+
+    def plan_clone(self, request: CloneRequest) -> ClonePreview:
+        return self._read(
+            PlanCloneMessage(
+                request_id=uuid.uuid4().hex, parameters=CloneParameters(**asdict(request))
+            ),
+            TypeAdapter(ClonePreview),
+        )
+
+    def clone(self, expected: ClonePreview, *, request_id: str, progress: Progress) -> CloneResult:
+        return self._read(
+            CloneMessage(request_id=request_id, parameters=CloneExpected(expected=expected)),
+            TypeAdapter(CloneResult),
+            progress,
+        )
+
+    def plan_update(self, request: HardwareRequest) -> HardwarePreview:
+        return self._read(
+            PlanUpdateMessage(
+                request_id=uuid.uuid4().hex, parameters=HardwareParameters(**asdict(request))
+            ),
+            TypeAdapter(HardwarePreview),
+        )
+
+    def update(self, expected: HardwarePreview, *, progress: Progress) -> HardwareResult:
+        return self._read(
+            UpdateMessage(
+                request_id=uuid.uuid4().hex, parameters=HardwareExpected(expected=expected)
+            ),
+            TypeAdapter(HardwareResult),
+            progress,
+        )
+
+    def plan_spice(self, request: SpiceRequest) -> SpicePreview:
+        return self._read(
+            PlanSpiceMessage(
+                request_id=uuid.uuid4().hex, parameters=SpiceParameters(**asdict(request))
+            ),
+            TypeAdapter(SpicePreview),
+        )
+
+    def spice(self, expected: SpicePreview, *, progress: Progress) -> SpiceResult:
+        return self._read(
+            SpiceMessage(request_id=uuid.uuid4().hex, parameters=SpiceExpected(expected=expected)),
+            TypeAdapter(SpiceResult),
+            progress,
+        )
 
     def plan_delete(self, reference: str) -> DeletePreview:
         return self._read(
