@@ -1,11 +1,15 @@
 """Target confirmation, masked credentials and operation progress screens."""
 
+import time
+
 from pydantic import SecretStr
 from textual import on
 from textual.app import ComposeResult
+from textual.color import Gradient
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, RichLog, Static
+from textual.timer import Timer
+from textual.widgets import Button, Input, Label, ProgressBar, RichLog, Static
 
 from vmctl.errors import VmctlError
 from vmctl.utils.passwords import hash_desktop_password
@@ -113,13 +117,44 @@ class TextScreen(ModalScreen[None]):
 
 
 class ProgressScreen(ModalScreen[None]):
+    def __init__(self) -> None:
+        super().__init__()
+        self.started_at = time.monotonic()
+        self.elapsed_timer: Timer | None = None
+
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog large-dialog"):
             yield Label("Creating VM", classes="dialog-title")
             yield Static(
                 "The server may still be working after a connection failure. Inspect VM state before retrying an unknown outcome."
             )
+            yield ProgressBar(
+                total=None,
+                show_percentage=False,
+                show_eta=False,
+                gradient=Gradient.from_colors("#22c1c3", "#4f86f7", "#aa6df5"),
+                id="operation-bar",
+            )
+            yield Static("Waiting for worker progress...", id="operation-stage", markup=False)
+            yield Static("Elapsed: 0s | Duration is not known in advance", id="operation-time")
             yield RichLog(id="progress-log", markup=False, highlight=False, wrap=True)
 
+    def on_mount(self) -> None:
+        self.elapsed_timer = self.set_interval(0.5, self.update_elapsed)
+
+    def on_unmount(self) -> None:
+        if self.elapsed_timer is not None:
+            self.elapsed_timer.stop()
+
+    def update_elapsed(self) -> None:
+        elapsed = int(time.monotonic() - self.started_at)
+        minutes, seconds = divmod(elapsed, 60)
+        label = f"{minutes}m {seconds:02d}s" if minutes else f"{seconds}s"
+        self.query_one("#operation-time", Static).update(
+            f"Elapsed: {label} | Duration is not known in advance"
+        )
+
     def append(self, message: str) -> None:
+        if message.strip():
+            self.query_one("#operation-stage", Static).update(message.splitlines()[-1][:200])
         self.query_one("#progress-log", RichLog).write(message)

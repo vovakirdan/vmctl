@@ -10,6 +10,7 @@ from vmctl.utils.ssh_keys import read_public_key
 
 if TYPE_CHECKING:
     from vmctl.local import Dependencies
+    from vmctl.transfer.service import UploadService
 
 
 @dataclass(frozen=True)
@@ -66,3 +67,15 @@ def target_label(settings: FrontendSettings) -> str:
         if settings.local
         else load_client_config(settings.directory).connection.host
     )
+
+
+def build_upload_service(settings: FrontendSettings, backend: Operations) -> "UploadService":
+    from vmctl.transfer.service import UploadService
+
+    if settings.local:
+        from vmctl.config import load_config
+
+        username = load_config(settings.directory).host.username
+    else:
+        username = load_client_config(settings.directory).client.guest_username
+    return UploadService(backend, default_username=username)

@@ -11,7 +11,7 @@ NAT, WireGuard and public bridge configuration are not modified by this tool.
 
 ## Quickstart (Linux / WSL)
 
-Use the same **0.6.0** release for the workstation client and server worker.
+Use the same **0.7.0** release for the workstation client and server worker.
 If the worker is not installed yet, follow [server installation](#install-the-executor-on-the-proxmox-host)
 and [host prerequisites](#host-prerequisites) first.
 
@@ -106,6 +106,7 @@ operation_timeout = 3600
 [client]
 ssh_key = "~/.ssh/id_ed25519.pub"
 completion_timeout = 3
+guest_username = "vmadmin"
 ```
 
 `connection.host` is an OpenSSH alias. Authentication, identity files, port and
@@ -152,7 +153,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Keep `/opt/vmctl` and server configuration owned by the administrator. The
 absolute worker path works without relying on a login shell's PATH. An existing
 wheel can be supplied to `uv tool install` instead of `.`. Install compatible
-versions on both sides; this release is **0.6.0**, with protocol version **1**.
+versions on both sides; this release is **0.7.0**, with protocol version **1**.
 
 `vmctl --local config init` installs the server TOML files, system features,
 development modules and guest scripts into `/etc/vmctl`. It never installs
@@ -343,8 +344,9 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 
 A wheel from `dist/` may replace `.` on both sides. Reinstalling and `config init`
 preserve existing settings; add new settings explicitly when needed. Version
-0.6.0 adds generic VM duplication, CPU/RAM editing and SPICE setup: update the worker
-as well as the client. Reopen the shell after refreshing completion.
+0.7.0 adds direct SFTP uploads and transfer/operation progress, alongside VM
+duplication, CPU/RAM editing and SPICE setup. Update the worker as well as the
+client. Reopen the shell after refreshing completion.
 
 `config init` also adds `/etc/vmctl/spice.toml` when it is missing. Existing
 SPICE settings are preserved; the default `spice_file = "spice.toml"` applies
@@ -364,8 +366,8 @@ worker over your existing SSH alias. These commands assume root access through
 `pxmx` and uv installed at `/root/.local/bin/uv`; adjust that uv path if needed:
 
 ```sh
-scp dist/vmctl-0.6.0-py3-none-any.whl pxmx:/tmp/
-ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.6.0-py3-none-any.whl --python 3.12 --force --reinstall'
+scp dist/vmctl-0.7.0-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.7.0-py3-none-any.whl --python 3.12 --force --reinstall'
 ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
 vmctl config validate
 vmctl tui --read-only
@@ -534,6 +536,7 @@ counters; live rates are available in the TUI.
 | `clone SOURCE NEW_NAME` | Full duplicate of an existing ordinary VM, including Android; new MAC/IP, stopped by default |
 | `update NAME_OR_VMID --cpu N --memory SIZE` | Change total vCPUs/RAM; explicit `--restart` allows graceful downtime |
 | `spice NAME_OR_VMID` | Prepare SPICE display and optional supported Linux guest integration through QGA |
+| `upload NAME_OR_VMID PATH --to DIRECTORY` | Send a local file/folder directly to a running guest over SSH/SFTP |
 | `stats NAME_OR_VMID` | Selected VM CPU, memory, uptime and cumulative network/disk counters |
 | `start NAME_OR_VMID` | Start a stopped VM |
 | `shutdown NAME_OR_VMID [--yes]` | Confirm and request a graceful guest shutdown; no hard-stop fallback |
@@ -646,6 +649,54 @@ and `MiB/GiB` use binary units. Disk requests must be whole GiB. A larger
 template disk is retained and reported; shrinking is never requested. When
 multiple disks exist, the boot order selects the first data disk; otherwise set
 `disk_device = "scsi0"` in the corresponding template entry.
+
+## Upload files and folders
+
+Select a running VM and choose **Upload** in the TUI. Browse the workstation
+filesystem or enter a local path, choose the guest directory and inspect
+**Preview** before **Send**. The source name is retained: uploading `project`
+to `/home/vmadmin` creates `/home/vmadmin/project`. The guest destination
+directory must already exist; `~` resolves to the SSH user's home.
+
+```sh
+vmctl upload work ./archive.zip --to /home/vmadmin --dry-run
+vmctl upload work ./archive.zip --to /home/vmadmin
+vmctl upload work ./project --to /home/vmadmin
+vmctl upload work ./archive.zip --to /home/vmadmin --overwrite
+vmctl upload work ./report.txt --to /home/alice --user alice
+```
+
+The VM must be running, have a known IP, and offer SSH/SFTP with a writable
+destination. A running Android guest without SSH/SFTP is not sufficient.
+Authentication uses native OpenSSH configuration, local keys/agent and strict
+host-key checks. For a new guest, verify its SSH host-key fingerprint and connect
+once with SSH before uploading. A changed key blocks the transfer; vmctl never
+silently replaces trusted keys. The user defaults to VM metadata/cloud-init,
+then `client.guest_username` (default `vmadmin`); `--user` overrides it.
+
+SFTP goes from the workstation to the guest; file contents and private keys do
+not pass through the Proxmox worker. Paramiko provides file operations over the
+native OpenSSH subsystem. No rsync, guest agent, guest Python or sudo is required.
+Files belong to the guest account used for the connection.
+
+By default, an existing target is refused. **Replace an existing regular file**
+or `--overwrite` permits atomic replacement of one file using the OpenSSH POSIX
+rename extension. Folders are uploaded as new directories; existing folders are
+never merged or deleted. Symlinks, junctions and special files within the selected
+source are rejected before transfer. Uploads use private staging and publish
+after validation; cancellation preserves the old target and attempts to remove
+only owned staging data. If a publication reply is lost, inspect the reported
+path before retrying. Interrupted uploads do not resume automatically.
+
+The transfer screen shows actual bytes/files, current file, speed, a throughput
+graph, ETA and **Cancel**. Once bytes are sent, verification/publication uses an
+indeterminate indicator until the result is confirmed. VM operations similarly
+show a moving bar, the latest worker stage and elapsed time, without inventing a
+completion percentage. Read-only mode permits previews and disables sending.
+
+![Select a local file or folder for upload](docs/screenshots/upload.png)
+
+![Transfer progress and throughput](docs/screenshots/upload-progress.png)
 
 ## Duplicate and edit existing VMs
 
@@ -1257,6 +1308,7 @@ vmctl/
     services/clone_vm.py    # Guarded full duplication and owned-resource cleanup
     services/hardware.py   # CPU/RAM edits with graceful downtime and rollback
     services/spice.py      # SPICE display and asynchronous guest installation
+    transfer/              # Workstation SFTP transport, frozen plans and atomic uploads
     network/discovery.py    # Read-only private-network IP observations
     {proxmox,network,bootstrap,services,utils}/
   docs/screenshots/          # Sanitized TUI captures

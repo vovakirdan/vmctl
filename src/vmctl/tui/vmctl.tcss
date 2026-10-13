@@ -1,6 +1,9 @@
 Screen { background: $surface; }
 #target, #connection { height: auto; min-height: 1; padding: 0 1; }
 #connection { color: $text-muted; }
+#connection-row { height: 1; }
+#connection { width: 1fr; padding-left: 0; }
+#connection-loading { display: none; width: 7; height: 1; }
 #search { margin: 0 1; }
 #dashboard { height: 1fr; margin: 0 1; }
 #vm-table { width: 2fr; height: 1fr; }
@@ -46,6 +49,30 @@ ModalScreen { align: center middle; background: $background 60%; }
 #manage-preview { border-left: solid $primary; padding-left: 1; }
 #manage-error { color: $error; height: auto; }
 #manage-buttons { padding: 0 2; margin: 0; }
+#operation-bar { height: 1; width: 1fr; }
+#operation-stage, #operation-time { height: auto; }
+#upload-title { height: 2; padding: 0 2; }
+#upload-scroll { height: 1fr; padding: 0 2; }
+#upload-scroll Label, #upload-scroll Static { height: auto; }
+#upload-scroll Static { margin-bottom: 1; }
+#upload-scroll Input { margin-bottom: 1; }
+#upload-scroll Checkbox { width: 1fr; height: 3; }
+#upload-source-row { height: 3; margin-bottom: 1; }
+#upload-source { width: 1fr; }
+#upload-browse { min-width: 10; margin-left: 1; }
+#upload-preview { border-left: solid $primary; padding-left: 1; }
+#upload-error { color: $error; height: auto; }
+#upload-buttons { padding: 0 2; margin: 0; }
+#source-tree { height: 1fr; }
+.source-dialog { height: 85%; }
+.upload-progress-dialog { height: 85%; }
+.upload-progress-dialog Static { margin-bottom: 0; }
+#upload-progress-bar { height: 1; width: 1fr; margin: 1 0; }
+#upload-speed-graph { height: 3; margin: 1 0; color: $accent; }
+#upload-speed { color: $text-muted; }
+#upload-stage { margin-top: 1; }
+#upload-current { height: auto; min-height: 1; max-height: 3; }
+#upload-cancel-note { color: $warning; }
 .metrics-dialog { width: 112; height: 92%; max-height: 95%; padding: 1 2; }
 #address-toolbar { height: 3; }
 #vm-address { width: 1fr; padding-top: 1; }

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vmctl"
-version = "0.6.0"
+version = "0.7.0"
 description = "SSH client and local worker for Proxmox VM management"
 requires-python = ">=3.12"
 dependencies = [
@@ -15,6 +15,7 @@ dependencies = [
     "passlib>=1.7.4,<2",
     "platformdirs>=4.3,<5",
     "textual>=8.2.8,<9",
+    "paramiko>=4,<5",
 ]
 
 [project.scripts]
@@ -28,6 +29,7 @@ dev = [
     "mypy>=1.15",
     "types-PyYAML>=6",
     "types-passlib>=1.7.7.20260211",
+    "types-paramiko>=4,<5",
 ]
 
 [tool.hatch.build.targets.wheel]

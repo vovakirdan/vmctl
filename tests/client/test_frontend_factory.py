@@ -12,6 +12,7 @@ from vmctl import cli
 from vmctl.client_config import initialize_client_config
 from vmctl.frontend import FrontendSettings, build_operations, load_public_key, target_label
 from vmctl.ssh import SSHOperations
+from vmctl.transfer.service import UploadService
 
 
 def test_adapter_uses_configured_alias_and_completion_timeout(tmp_path: Path) -> None:
@@ -56,8 +57,11 @@ def test_tui_launcher_reuses_client_configuration(
             target: str,
             public_key: Callable[[Path | None], str | None],
             read_only: bool,
+            uploader: UploadService,
         ) -> None:
             self.arguments = (operations, target, read_only)
+            assert uploader.operations is operations
+            assert uploader.default_username == "vmadmin"
 
         def run(self) -> None:
             launches.append(self.arguments)

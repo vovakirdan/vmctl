@@ -9,10 +9,21 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
+from threading import Event
 from typing import TYPE_CHECKING, Annotated
 
 import typer
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeRemainingColumn,
+    TransferSpeedColumn,
+)
+from rich.progress import (
+    Progress as ConsoleProgress,
+)
 from rich.table import Table
 
 from vmctl import completion
@@ -21,7 +32,13 @@ from vmctl.client_config import (
     initialize_client_config,
 )
 from vmctl.errors import VmctlError
-from vmctl.frontend import FrontendSettings, build_operations, load_public_key, target_label
+from vmctl.frontend import (
+    FrontendSettings,
+    build_operations,
+    build_upload_service,
+    load_public_key,
+    target_label,
+)
 from vmctl.models import CloneRequest, CreateRequest, HardwareRequest, SpiceRequest
 from vmctl.operations import LifecycleAction, Operations
 from vmctl.services.init_config import initialize_config
@@ -32,6 +49,7 @@ if TYPE_CHECKING:
     from vmctl.network.allocator import AddressAllocator
     from vmctl.network.dnsmasq import DnsmasqReservations
     from vmctl.proxmox.client import ProxmoxClient
+    from vmctl.transfer.service import UploadService
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -107,6 +125,10 @@ def settings_for(ctx: typer.Context) -> CLISettings:
 
 def operations(ctx: typer.Context, *, completion: bool = False) -> Operations:
     return build_operations(settings_for(ctx), completion=completion, local_factory=dependencies)
+
+
+def upload_service(ctx: typer.Context, backend: Operations) -> UploadService:
+    return build_upload_service(settings_for(ctx), backend)
 
 
 def public_key(ctx: typer.Context, path: Path | None) -> str | None:
@@ -589,7 +611,7 @@ def tui(
     read_only: Annotated[
         bool,
         typer.Option(
-            help="Browse VMs and preview the creation form; disable create, delete and lifecycle operations."
+            help="Browse VMs and preview creation, clone, edit, SPICE and uploads; disable applying changes and file transfers."
         ),
     ] = False,
 ) -> None:
@@ -597,12 +619,102 @@ def tui(
         from vmctl.tui.app import VmctlApp
 
         settings = settings_for(ctx)
+        backend = operations(ctx)
         VmctlApp(
-            operations(ctx),
+            backend,
             target=target_label(settings),
             public_key=lambda path: load_public_key(settings, path),
             read_only=read_only,
+            uploader=upload_service(ctx, backend),
         ).run()
+
+
+@app.command(
+    help="Upload a local file or folder directly to a running VM over SSH/SFTP. The selected basename is appended to --to; private keys and file contents stay off the Proxmox worker."
+)
+def upload(
+    ctx: typer.Context,
+    reference: VMReference,
+    source: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            readable=True,
+            help="Local file or directory; symlinks and special files are rejected.",
+        ),
+    ],
+    destination: Annotated[
+        str,
+        typer.Option(
+            "--to",
+            help="Existing guest directory, e.g. /home/vmadmin or ~. The source name is retained.",
+        ),
+    ],
+    username: Annotated[
+        str | None, typer.Option("--user", help="Guest SSH user; default is VM metadata/config.")
+    ] = None,
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            help="Allow atomic replacement of one existing regular file; never merge folders."
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            help="Inspect VM, local source and guest destination through read-only SFTP; send no files."
+        ),
+    ] = False,
+    yes: Annotated[
+        bool, typer.Option("--yes", "-y", help="Skip confirmation of the frozen transfer target.")
+    ] = False,
+) -> None:
+    from vmctl.transfer.models import UploadCancelledError, UploadProgress, UploadRequest
+
+    with present_errors():
+        service = upload_service(ctx, operations(ctx))
+        preview = service.plan(UploadRequest(reference, source, destination, username, overwrite))
+        console.print(
+            f"VM: {preview.vm.vmid} ({preview.vm.name}); SSH: {preview.username}@{preview.ip}"
+        )
+        console.print(f"Source: {preview.source}\nDestination: {preview.destination}")
+        console.print(
+            f"Files: {preview.file_count}; bytes: {preview.total_bytes}; overwrite: {overwrite}"
+        )
+        for note in preview.notes:
+            console.print(note)
+        if dry_run:
+            console.print("Dry run: no guest files or VM configuration changed")
+            return
+        if not yes:
+            typer.confirm(f"Upload to VM {preview.vm.vmid} at {preview.destination}?", abort=True)
+        cancelled = Event()
+        with ConsoleProgress(
+            TextColumn("{task.description}", markup=False),
+            BarColumn(),
+            TaskProgressColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        ) as display:
+            task = display.add_task("Uploading", total=preview.total_bytes or None)
+
+            def progressed(event: UploadProgress) -> None:
+                display.update(task, completed=event.sent_bytes, description=event.current_path)
+
+            try:
+                result = service.upload(preview, progress=progressed, cancel=cancelled)
+            except UploadCancelledError as error:
+                errors.print(str(error))
+                raise typer.Exit(130) from None
+            except KeyboardInterrupt:
+                cancelled.set()
+                raise typer.Exit(130) from None
+        console.print(
+            f"Upload completed: {result.file_count} files, {result.bytes_sent} bytes -> {result.destination}"
+        )
+        for note in result.notes:
+            console.print(note)
 
 
 @app.command("list", help="List VMs with resources and reserved or detected IPv4 addresses.")

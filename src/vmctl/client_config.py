@@ -34,6 +34,7 @@ class ConnectionConfig(StrictModel):
 class ClientSettings(StrictModel):
     ssh_key: str = "~/.ssh/id_ed25519.pub"
     completion_timeout: int = Field(default=3, gt=0, le=30)
+    guest_username: str = Field(default="vmadmin", pattern=r"^[a-z_][a-z0-9_-]{0,31}$")
 
 
 class ClientConfiguration(StrictModel):

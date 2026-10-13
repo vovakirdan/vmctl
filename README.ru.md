@@ -11,7 +11,7 @@ NAT, WireGuard и конфигурацию публичного bridge.
 
 ## Быстрый старт (Linux / WSL)
 
-Установите одинаковую версию **0.6.0** клиента и серверного исполнителя.
+Установите одинаковую версию **0.7.0** клиента и серверного исполнителя.
 Если исполнитель ещё не установлен, сначала выполните [установку на сервере](#установка-исполнителя-на-хосте-proxmox)
 и проверьте [требования к хосту](#требования-к-хосту).
 
@@ -108,6 +108,7 @@ operation_timeout = 3600
 [client]
 ssh_key = "~/.ssh/id_ed25519.pub"
 completion_timeout = 3
+guest_username = "vmadmin"
 ```
 
 `connection.host` — имя подключения OpenSSH. Аутентификацию, файлы ключей, порт
@@ -156,7 +157,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Каталог `/opt/vmctl` и серверная конфигурация должны принадлежать администратору.
 Абсолютный путь исполнителя позволяет не зависеть от PATH login shell.
 Вместо `.` команде `uv tool install` можно передать готовый wheel. Установите
-совместимые версии с обеих сторон; текущая версия **0.6.0**, версия протокола **1**.
+совместимые версии с обеих сторон; текущая версия **0.7.0**, версия протокола **1**.
 
 `vmctl --local config init` устанавливает серверные TOML-файлы, системные
 возможности, модули разработки и гостевые скрипты в `/etc/vmctl`. `client.toml`
@@ -352,9 +353,9 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 
 Вместо `.` с обеих сторон можно передать wheel из `dist/`. Переустановка и
 `config init` сохраняют существующие настройки; новые поля добавляются явно.
-Версия 0.6.0 добавляет дубликаты VM, изменение CPU/RAM и настройку SPICE,
-поэтому обновите не только клиент, но и сервер. После обновления дополнения
-откройте новый shell.
+Версия 0.7.0 добавляет прямую передачу файлов по SFTP и прогресс операций;
+дубликаты VM, изменение CPU/RAM и настройка SPICE также доступны. Обновите
+клиент и сервер. После обновления дополнения откройте новый shell.
 
 `config init` также добавляет `/etc/vmctl/spice.toml`, если файла ещё нет.
 Существующие настройки SPICE сохраняются; значение по умолчанию
@@ -375,8 +376,8 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 `/root/.local/bin/uv`; при необходимости укажите другой путь к uv:
 
 ```sh
-scp dist/vmctl-0.6.0-py3-none-any.whl pxmx:/tmp/
-ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.6.0-py3-none-any.whl --python 3.12 --force --reinstall'
+scp dist/vmctl-0.7.0-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.7.0-py3-none-any.whl --python 3.12 --force --reinstall'
 ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
 vmctl config validate
 vmctl tui --read-only
@@ -552,6 +553,7 @@ Proxmox сообщает нагрузку выбранной VM: CPU относ�
 | `clone SOURCE NEW_NAME` | Полный дубликат существующей обычной VM, включая Android; новый MAC/IP, по умолчанию выключен |
 | `update NAME_OR_VMID --cpu N --memory SIZE` | Изменить общее число vCPU/RAM; явный `--restart` разрешает корректный перезапуск |
 | `spice NAME_OR_VMID` | Настроить SPICE-дисплей и гостевую интеграцию Linux через QGA, когда она доступна |
+| `upload NAME_OR_VMID PATH --to DIRECTORY` | Передать локальный файл/папку прямо в запущенную VM по SSH/SFTP |
 | `stats NAME_OR_VMID` | CPU, память, uptime и накопленные счётчики сети/диска выбранной VM |
 | `start NAME_OR_VMID` | Запустить выключенную VM |
 | `shutdown NAME_OR_VMID [--yes]` | Подтвердить и запросить корректное выключение гостя; без принудительной остановки |
@@ -669,6 +671,58 @@ Start, shutdown и reboot также принимают однозначное �
 в результате; уменьшение диска не запрашивается. При наличии нескольких дисков
 выбирается первый диск с данными в порядке загрузки; если выбрать диск таким
 образом невозможно, задайте `disk_device = "scsi0"` в записи нужного шаблона.
+
+## Передача файлов и папок
+
+Выберите запущенную VM и нажмите **Upload** в TUI. Найдите файл/папку на своём
+компьютере или введите локальный путь, укажите каталог в гостевой системе и
+проверьте **Preview** перед **Send**. Имя источника сохраняется: передача
+`project` в `/home/vmadmin` создаст `/home/vmadmin/project`. Каталог назначения
+должен существовать; `~` означает домашний каталог пользователя SSH.
+
+```sh
+vmctl upload work ./archive.zip --to /home/vmadmin --dry-run
+vmctl upload work ./archive.zip --to /home/vmadmin
+vmctl upload work ./project --to /home/vmadmin
+vmctl upload work ./archive.zip --to /home/vmadmin --overwrite
+vmctl upload work ./report.txt --to /home/alice --user alice
+```
+
+VM должна быть запущена, иметь известный IP и предоставлять SSH/SFTP с доступом
+на запись в выбранный каталог. Одного состояния Running у Android без SSH/SFTP
+недостаточно. Используются обычные настройки OpenSSH, локальные ключи/SSH-agent
+и строгая проверка ключа сервера. Для новой VM сначала сверьте отпечаток её SSH
+ключа и подключитесь обычным SSH. Изменение ключа блокирует передачу; vmctl не
+заменяет доверенные ключи автоматически. Пользователь берётся из метаданных
+VM/cloud-init, затем из `client.guest_username` (по умолчанию `vmadmin`);
+`--user` задаёт его явно.
+
+SFTP-соединение идёт с рабочего компьютера в гостевую VM; содержимое файлов
+и приватные ключи не проходят через Proxmox worker. Paramiko выполняет файловые
+операции через подсистему обычного OpenSSH. Для передачи не нужны rsync,
+гостевой агент, Python внутри VM или sudo. Владельцем файлов становится
+пользователь гостевой системы, под которым выполнено подключение.
+
+По умолчанию существующий объект не заменяется. **Replace an existing regular
+file** или `--overwrite` разрешает атомарную замену одного файла через расширение
+OpenSSH POSIX rename. Папки загружаются только под новым именем: существующие
+каталоги не объединяются и не удаляются. Символьные ссылки, junction и специальные
+файлы внутри источника отклоняются до передачи. Данные сначала записываются во
+временное закрытое место и публикуются после проверки. Отмена сохраняет прежний
+объект и пытается убрать только временные данные этой передачи. При потере ответа
+на публикацию проверьте указанный путь перед повтором. Автоматического продолжения
+оборванной передачи нет.
+
+Экран передачи показывает реальные байты/число файлов, текущий файл, скорость,
+график скорости, оставшееся время и **Cancel**. После отправки байтов проверка и
+публикация показываются индикатором без процента до подтверждения результата.
+Для операций с VM также есть движущаяся полоса, текущий этап worker и прошедшее
+время без выдуманного процента завершения. Режим только чтения разрешает Preview
+и отключает отправку.
+
+![Выбор локального файла или папки для передачи](docs/screenshots/upload.png)
+
+![Прогресс передачи и график скорости](docs/screenshots/upload-progress.png)
 
 ## Дубликаты и изменение существующих VM
 
@@ -1305,6 +1359,7 @@ vmctl/
     services/clone_vm.py    # Guarded full duplication and owned-resource cleanup
     services/hardware.py   # CPU/RAM edits with graceful downtime and rollback
     services/spice.py      # SPICE display and asynchronous guest installation
+    transfer/              # Workstation SFTP transport, frozen plans and atomic uploads
     network/discovery.py    # Read-only private-network IP observations
     {proxmox,network,bootstrap,services,utils}/
   docs/screenshots/          # Sanitized TUI captures

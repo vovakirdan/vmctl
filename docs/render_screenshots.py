@@ -8,9 +8,11 @@ from __future__ import annotations
 import asyncio
 import math
 import time
+from collections.abc import Callable
 from dataclasses import replace
 from ipaddress import IPv4Address
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from threading import Event
 
 from textual.widgets import Checkbox, Input, Select
 
@@ -45,11 +47,13 @@ from vmctl.operations import (
     ValidationSummary,
 )
 from vmctl.services.catalog import build_catalog
+from vmctl.transfer.models import UploadPreview, UploadProgress, UploadRequest, UploadResult
 from vmctl.tui.app import VmctlApp
 from vmctl.tui.create import CreateScreen
 from vmctl.tui.details import VMDetailsScreen
 from vmctl.tui.features import FeatureChoices
 from vmctl.tui.manage import ManageAction, ManageScreen
+from vmctl.tui.upload import UploadProgressScreen, UploadScreen
 from vmctl.utils.sizes import parse_size
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -227,6 +231,31 @@ class DemoOperations:
         raise VmctlError("Screenshot demo does not execute VM requests")
 
 
+class DemoUploads:
+    def __init__(self, backend: DemoOperations) -> None:
+        self.backend = backend
+
+    def plan(self, request: UploadRequest) -> UploadPreview:
+        details = self.backend.info(request.reference)
+        assert details.ip is not None
+        return UploadPreview(
+            details.vm,
+            details.ip,
+            "vmadmin",
+            request.source,
+            PurePosixPath("/home/vmadmin") / request.source.name,
+            240,
+            256 * 1024**2,
+            "demo-upload",
+            request,
+        )
+
+    def upload(
+        self, expected: UploadPreview, *, progress: Callable[[UploadProgress], None], cancel: Event
+    ) -> UploadResult:
+        raise VmctlError("Screenshot demo never transfers files")
+
+
 async def capture() -> None:
     import cairosvg
 
@@ -237,7 +266,13 @@ async def capture() -> None:
         cairosvg.svg2png(bytestring=svg.encode(), write_to=str(destination))
 
     backend = DemoOperations()
-    app = VmctlApp(backend, target="demo (fake worker)", public_key=lambda _: None, read_only=True)
+    app = VmctlApp(
+        backend,
+        target="demo (fake worker)",
+        public_key=lambda _: None,
+        read_only=True,
+        uploader=DemoUploads(backend),
+    )
     async with app.run_test(size=(140, 48)) as pilot:
         await app.workers.wait_for_complete()
         await pilot.pause()
@@ -314,6 +349,35 @@ async def capture() -> None:
             save(app, f"manage-{action}")
             manage.dismiss(None)
             await pilot.pause()
+        upload = UploadScreen(backend.info("104"))
+        app.push_screen(upload)
+        await pilot.pause()
+        upload.query_one("#upload-source", Input).value = "/home/user/projects/demo"
+        await pilot.pause()
+        upload.plan()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        save(app, "upload")
+        assert upload.preview is not None
+        expected = upload.preview
+        upload.dismiss(None)
+        await pilot.pause()
+        await pilot.resize_terminal(120, 40)
+        transfer = UploadProgressScreen(expected, Event())
+        app.push_screen(transfer)
+        await pilot.pause()
+        transfer.started = time.monotonic() - 12
+        sent = 0
+        for index, mib in enumerate((4, 7, 9, 8, 10, 12, 11, 8, 7, 10, 12, 9)):
+            sent += mib * 1024**2
+            transfer.last_sample_time = time.monotonic() - 1
+            transfer.append(
+                UploadProgress("assets/demo.bin", sent, expected.total_bytes, index * 10, 240)
+            )
+        await pilot.pause()
+        save(app, "upload-progress")
+        transfer.dismiss(None)
+        await pilot.pause()
 
 
 if __name__ == "__main__":

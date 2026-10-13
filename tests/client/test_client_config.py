@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 
 from vmctl.cli import app
 from vmctl.client_config import (
+    ClientSettings,
     ConnectionConfig,
     default_client_directory,
     initialize_client_config,
@@ -73,6 +74,13 @@ def test_default_path_uses_native_platform_directory() -> None:
     assert path.is_absolute()
     assert "vmctl" in path.parts
     assert path != Path("/etc/vmctl")
+
+
+def test_guest_username_fallback_is_configurable() -> None:
+    assert ClientSettings().guest_username == "vmadmin"
+    assert ClientSettings(guest_username="alice").guest_username == "alice"
+    with pytest.raises(ValueError):
+        ClientSettings(guest_username="root; command")
 
 
 def test_client_cold_import_without_linux_services() -> None:

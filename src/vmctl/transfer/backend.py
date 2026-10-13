@@ -1,0 +1,33 @@
+"""Small injectable SFTP boundary; OpenSSH owns authentication and host trust."""
+
+from contextlib import AbstractContextManager
+from dataclasses import dataclass
+from ipaddress import IPv4Address
+from pathlib import PurePosixPath
+from threading import Event
+from typing import BinaryIO, Protocol
+
+
+@dataclass(frozen=True)
+class RemoteAttributes:
+    mode: int
+    size: int
+    mtime: int = 0
+
+
+class TransferSession(Protocol):
+    def normalize(self, path: str) -> PurePosixPath: ...
+    def lstat(self, path: PurePosixPath) -> RemoteAttributes | None: ...
+    def mkdir(self, path: PurePosixPath, mode: int = 0o700) -> None: ...
+    def open_write(self, path: PurePosixPath) -> AbstractContextManager[BinaryIO]: ...
+    def chmod(self, path: PurePosixPath, mode: int) -> None: ...
+    def remove(self, path: PurePosixPath) -> None: ...
+    def rmdir(self, path: PurePosixPath) -> None: ...
+    def rename(self, source: PurePosixPath, destination: PurePosixPath) -> None: ...
+    def posix_rename(self, source: PurePosixPath, destination: PurePosixPath) -> None: ...
+
+
+class TransferBackend(Protocol):
+    def session(
+        self, ip: IPv4Address, username: str, *, cancel: Event | None = None
+    ) -> AbstractContextManager[TransferSession]: ...

@@ -4,17 +4,29 @@ from collections.abc import Callable
 from datetime import datetime
 from ipaddress import IPv4Address
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from textual import events, on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Input, Select, Static
+from textual.widgets import (
+    Button,
+    Checkbox,
+    DataTable,
+    Footer,
+    Header,
+    Input,
+    LoadingIndicator,
+    Select,
+    Static,
+)
 
 from vmctl.errors import UncertainOperationError, UnknownOutcomeError
 from vmctl.models import CreateResult, VMDetails
 from vmctl.operations import ActionPreview, Catalog, DeletePreview, LifecycleAction, Operations
+from vmctl.transfer.models import UploadResult
 from vmctl.tui.create import CreateScreen
 from vmctl.tui.details import VMDetailsScreen
 from vmctl.tui.dialogs import ConfirmScreen, TextScreen
@@ -22,7 +34,11 @@ from vmctl.tui.formatting import details_text, error_text, result_text
 from vmctl.tui.manage import ManageAction, ManageResult, ManageScreen
 from vmctl.tui.manage import result_text as manage_result_text
 from vmctl.tui.table import VMTable
+from vmctl.tui.upload import UploadScreen, upload_result_text
 from vmctl.utils.clipboard import copy_native
+
+if TYPE_CHECKING:
+    from vmctl.transfer.service import UploadService
 
 
 class DashboardScreen(Screen[None]):
@@ -47,6 +63,7 @@ class VmctlApp(App[None]):
         target: str,
         public_key: Callable[[Path | None], str | None],
         read_only: bool = False,
+        uploader: "UploadService | None" = None,
     ) -> None:
         super().__init__()
         self.backend, self.target, self.public_key, self.read_only = (
@@ -61,6 +78,7 @@ class VmctlApp(App[None]):
         self.busy = False
         self.last_success: datetime | None = None
         self.stale = False
+        self.uploader = uploader
 
     def get_default_screen(self) -> Screen[None]:
         return DashboardScreen()
@@ -78,7 +96,9 @@ class VmctlApp(App[None]):
             id="target",
             markup=False,
         )
-        yield Static("Connecting to worker...", id="connection", markup=False)
+        with Horizontal(id="connection-row"):
+            yield LoadingIndicator(id="connection-loading")
+            yield Static("Connecting to worker...", id="connection", markup=False)
         yield Input(placeholder="Search by name, VMID, template or IP", id="search")
         with Horizontal(id="dashboard"):
             yield VMTable(id="vm-table", cursor_type="row", zebra_stripes=True)
@@ -91,6 +111,7 @@ class VmctlApp(App[None]):
             yield Button("Clone", id="clone-action")
             yield Button("Edit", id="edit-action")
             yield Button("SPICE", id="spice-action")
+            yield Button("Upload", id="upload-action")
             yield Button("Start", id="start-action")
             yield Button("Shutdown", id="shutdown-action")
             yield Button("Reboot", id="reboot-action")
@@ -130,22 +151,27 @@ class VmctlApp(App[None]):
         operation: Callable[[], Result],
         success: Callable[[Result], None],
         failure: Callable[[Exception], None] | None = None,
+        *,
+        enabled_controls: tuple[str, ...] = (),
     ) -> None:
         if self.busy:
             self.notify("An operation is already running.", severity="warning")
             return
         self.busy = True
+        self.screen_stack[0].query_one("#connection-loading", LoadingIndicator).display = True
         self.connection_status(label + "...")
         disabled = [
             (widget, widget.disabled)
             for widget in self.screen.query("Button, Input, Checkbox, Select, DataTable")
             if isinstance(widget, (Button, Input, Checkbox, Select, DataTable))
+            and widget.id not in enabled_controls
         ]
         for widget, _ in disabled:
             widget.disabled = True
 
         def finish(result: Result | None, error: Exception | None) -> None:
             self.busy = False
+            self.screen_stack[0].query_one("#connection-loading", LoadingIndicator).display = False
             for widget, was_disabled in disabled:
                 if widget.is_mounted:
                     widget.disabled = was_disabled
@@ -162,6 +188,10 @@ class VmctlApp(App[None]):
                 from typing import cast
 
                 success(cast(Result, result))
+                if not self.busy and not self.stale and self.last_success is not None:
+                    self.connection_status(
+                        f"Connected | Last update {self.last_success:%H:%M:%S} | {len(self.inventory)} VMs"
+                    )
             self.update_actions()
 
         def run() -> None:
@@ -282,6 +312,21 @@ class VmctlApp(App[None]):
                 or current is None
                 or bool(current and (current.vm.template or 9000 <= current.vm.vmid <= 9099))
             )
+        main.query_one("#upload-action", Button).disabled = (
+            self.uploader is None
+            or self.busy
+            or self.stale
+            or current is None
+            or bool(
+                current
+                and (
+                    current.vm.template
+                    or 9000 <= current.vm.vmid <= 9099
+                    or current.vm.status != "running"
+                    or current.display_ip is None
+                )
+            )
+        )
         for action in ("start", "shutdown", "reboot", "delete"):
             disabled = (
                 self.read_only
@@ -363,6 +408,8 @@ class VmctlApp(App[None]):
                 from typing import cast
 
                 self.open_manage(cast(ManageAction, event.button.id.removesuffix("-action")))
+            case "upload-action":
+                self.open_upload()
             case "start-action" | "shutdown-action" | "reboot-action":
                 action = {
                     "start-action": "start",
@@ -397,6 +444,25 @@ class VmctlApp(App[None]):
             self.selected_id = result.vm.vmid
             self.action_refresh()
             self.push_screen(TextScreen("Management result", manage_result_text(result)))
+
+    def open_upload(self) -> None:
+        current = self.current()
+        if (
+            self.uploader is None
+            or current is None
+            or self.busy
+            or self.stale
+            or current.vm.template
+            or 9000 <= current.vm.vmid <= 9099
+            or current.vm.status != "running"
+            or current.display_ip is None
+        ):
+            return
+        self.push_screen(UploadScreen(current), self.uploaded)
+
+    def uploaded(self, result: UploadResult | None) -> None:
+        if result is not None:
+            self.push_screen(TextScreen("Upload complete", upload_result_text(result)))
 
     def action_new(self) -> None:
         if self.busy or self.catalog_data is None:
