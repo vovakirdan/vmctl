@@ -309,7 +309,8 @@ class UploadService:
                     remote = (
                         staged_target if entry.relative == "." else staged_target / entry.relative
                     )
-                    session.chmod(remote, stat.S_IMODE(entry.mode) & 0o777)
+                    # Workstation groups and Windows ACLs do not map to guest accounts.
+                    session.chmod(remote, stat.S_IMODE(entry.mode) & 0o700)
                 attrs = _check_target(
                     session, expected.destination, expected.request, entries[0].directory
                 )

@@ -182,6 +182,19 @@ def test_file_upload_is_staged_and_published_once(
     assert not any(".vmctl-upload-" in str(path) for path in backend.remote.nodes)
 
 
+def test_published_file_permissions_stay_private(
+    setup: tuple[FakeGuest, MemoryBackend, UploadService, Path],
+) -> None:
+    _, backend, service, source = setup
+    source.chmod(0o777)
+    preview = service.plan(UploadRequest("104", source))
+    service.upload(preview, progress=lambda _: None)
+    mode = stat.S_IMODE(backend.remote.nodes[preview.destination].mode)
+    assert mode & 0o077 == 0
+    assert mode & stat.S_IRUSR
+    assert bool(mode & stat.S_IXUSR) == bool(source.stat().st_mode & stat.S_IXUSR)
+
+
 def test_directory_upload_preserves_tree_and_empty_files(tmp_path: Path) -> None:
     guest, backend = FakeGuest(), MemoryBackend()
     service = UploadService(cast(Operations, guest), backend=backend)

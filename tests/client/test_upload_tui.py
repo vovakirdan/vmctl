@@ -464,7 +464,19 @@ def test_editing_source_while_preview_runs_discards_late_result(tmp_path: Path) 
     asyncio.run(scenario())
 
 
-def test_unresolvable_local_home_is_actionable_and_chooser_still_cancels() -> None:
+def test_unresolvable_local_home_is_actionable_and_chooser_still_cancels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_expanduser = Path.expanduser
+
+    def expanduser(path: Path) -> Path:
+        # Windows expands ~user syntactically, even if that account does not exist.
+        if path.parts and path.parts[0] == "~vmctl-user-that-does-not-exist":
+            raise RuntimeError("Home directory is unavailable")
+        return original_expanduser(path)
+
+    monkeypatch.setattr(Path, "expanduser", expanduser)
+
     async def scenario() -> None:
         backend = FakeOperations()
         app = app_for(backend)

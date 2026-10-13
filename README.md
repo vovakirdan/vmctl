@@ -677,7 +677,9 @@ then `client.guest_username` (default `vmadmin`); `--user` overrides it.
 SFTP goes from the workstation to the guest; file contents and private keys do
 not pass through the Proxmox worker. Paramiko provides file operations over the
 native OpenSSH subsystem. No rsync, guest agent, guest Python or sudo is required.
-Files belong to the guest account used for the connection.
+Files belong to the guest account used for the connection. Published files and
+folders retain only owner permissions, including owner execute permission where
+present; workstation groups and Windows ACLs are not copied to the guest.
 
 By default, an existing target is refused. **Replace an existing regular file**
 or `--overwrite` permits atomic replacement of one file using the OpenSSH POSIX
