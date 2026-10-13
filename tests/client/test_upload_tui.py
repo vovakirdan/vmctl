@@ -292,10 +292,14 @@ def test_upload_cancel_stays_clickable_while_transfer_is_busy(tmp_path: Path) ->
             assert isinstance(screen, UploadScreen)
             screen.query_one("#upload-source", Input).value = str(tmp_path / "project")
             await pilot.pause()
-            screen.plan()
+            await pilot.click("#upload-plan")
             await app.workers.wait_for_complete()
             await pilot.pause()
-            assert screen.preview is not None
+            assert screen.preview is not None, (
+                f"planned={len(uploader.planned)}, busy={app.busy}, stale={app.stale}, "
+                f"error={screen.query_one('#upload-error', Static).render()}, "
+                f"preview={screen.query_one('#upload-preview', Static).render()}"
+            )
             screen.execute(screen.preview)
             await pilot.pause()
             assert uploader.started.is_set()
