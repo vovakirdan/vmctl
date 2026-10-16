@@ -8,6 +8,7 @@ from vmctl.bootstrap.resolver import resolve_modules, validate_definitions
 from vmctl.bootstrap.system import resolve_system_features, validate_system_features
 from vmctl.config import Configuration, Template
 from vmctl.errors import VmctlError
+from vmctl.fileshare.config import settings as fileshare_settings
 from vmctl.operations import Catalog, CatalogItem
 
 
@@ -43,6 +44,11 @@ def build_catalog(config: Configuration) -> Catalog:
         return supported_templates(config, check)
 
     def feature_support(name: str) -> tuple[str, ...]:
+        if name == "fileshare" and config.host.fileshare is None:
+            return ()
+        if name == "fileshare":
+            fileshare_settings(config)
+
         def check(template: Template) -> None:
             # Check this feature and its dependencies independently of template defaults.
             resolve_system_features(
@@ -72,7 +78,13 @@ def build_catalog(config: Configuration) -> Catalog:
         ),
         system_features=tuple(
             CatalogItem(
-                name, feature.description, feature_support(name), tuple(feature.dependencies)
+                name,
+                feature.description,
+                feature_support(name),
+                tuple(feature.dependencies),
+                unavailable_reason="Configure fileshare on the worker before granting VM access."
+                if name == "fileshare" and config.host.fileshare is None
+                else None,
             )
             for name, feature in sorted(features.items())
         ),

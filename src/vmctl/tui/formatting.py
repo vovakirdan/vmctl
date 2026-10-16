@@ -39,25 +39,41 @@ def details_text(details: VMDetails) -> str:
         lines += ["", f"SSH: ssh {username}@{details.display_ip}"]
     if details.rdp_enabled:
         lines += ["", f"RDP: {details.rdp_address or 'address unknown'}", f"User: {username}"]
+    if "fileshare" in details.system_features:
+        lines += [
+            "",
+            f"Fileshare: {details.metadata.get('fileshare_endpoint', 'unknown')}",
+            f"Account: {details.metadata.get('fileshare_account', 'unknown')}",
+            "Own directory: files:" + details.metadata.get("fileshare_directory", "unknown"),
+            "Access: read shared; write/delete own directory (default; server policy may differ).",
+            "Client: vmctl-files (rclone; no mount)",
+        ]
     return "\n".join(lines)
 
 
 def preview_text(preview: CreatePreview) -> str:
-    return "\n".join(
-        [
-            f"Template VMID: {preview.template_vmid}   Bridge: {preview.bridge}",
-            f"CPU: {preview.resources.cpu} vCPU   RAM: {preview.resources.memory_mib / 1024:g} GiB   Disk: {max(preview.resources.disk_gib, preview.template_disk_gib)} GiB",
-            "Disk is never shrunk; larger template disks are retained.",
-            "System features: " + (", ".join(preview.system_features) or "none"),
-            "Optional modules: " + (", ".join(preview.modules) or "none"),
-            f"Cloud-init user: {preview.username}",
-            "Desktop password will be requested."
-            if preview.requires_desktop_password
-            else "Desktop password setup is skipped; GUI/RDP needs another authentication setup."
-            if preview.desktop
-            else "Desktop password is not required for this server template.",
+    lines = [
+        f"Template VMID: {preview.template_vmid}   Bridge: {preview.bridge}",
+        f"CPU: {preview.resources.cpu} vCPU   RAM: {preview.resources.memory_mib / 1024:g} GiB   Disk: {max(preview.resources.disk_gib, preview.template_disk_gib)} GiB",
+        "Disk is never shrunk; larger template disks are retained.",
+        "System features: " + (", ".join(preview.system_features) or "none"),
+        "Optional modules: " + (", ".join(preview.modules) or "none"),
+        f"Cloud-init user: {preview.username}",
+        "Desktop password will be requested."
+        if preview.requires_desktop_password
+        else "Desktop password setup is skipped; GUI/RDP needs another authentication setup."
+        if preview.desktop
+        else "Desktop password is not required for this server template.",
+    ]
+    if "fileshare" in preview.system_features:
+        lines += [
+            "",
+            f"Fileshare: {preview.fileshare_endpoint or 'configured SFTP endpoint'}",
+            "Access: read shared files; write/delete only in this VM's own directory.",
+            "Own directory is allocated using the VM name, VMID and creation ID.",
+            "Client: vmctl-files (rclone; no mount). Preview does not create credentials.",
         ]
-    )
+    return "\n".join(lines)
 
 
 def result_text(result: CreateResult) -> str:
@@ -74,5 +90,14 @@ def result_text(result: CreateResult) -> str:
     ]
     if result.rdp_enabled:
         lines += ["", f"RDP: {result.ip}:3389", f"User: {result.username}"]
+    if result.fileshare_endpoint:
+        lines += [
+            "",
+            f"Fileshare: {result.fileshare_endpoint}",
+            f"Account: {result.fileshare_account}",
+            f"Own directory: files:{result.fileshare_directory}",
+            "Access: read shared files; write/delete only in own directory (default).",
+            "Client: vmctl-files (rclone; no mount)",
+        ]
     lines += ["", "Guest bootstrap completion has not been verified."]
     return "\n".join(lines)

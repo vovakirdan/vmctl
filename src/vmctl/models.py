@@ -195,3 +195,6 @@ class CreateResult:
     system_features: tuple[str, ...] = ()
     desktop: bool = False
     rdp_enabled: bool = False
+    fileshare_account: str | None = None
+    fileshare_directory: str | None = None
+    fileshare_endpoint: str | None = None

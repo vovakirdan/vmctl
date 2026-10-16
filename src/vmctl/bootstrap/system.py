@@ -92,6 +92,10 @@ def select_bootstrap(config: Configuration, request: CreateRequest) -> Bootstrap
     selected = resolve_system_features(
         template, features, request.system_features, request.without_system
     )
+    if any(feature.name == "fileshare" for feature in selected):
+        from vmctl.fileshare.config import settings
+
+        settings(config)
     modules = load_modules(config)
     if features.keys() & (modules.keys() | config.profiles.keys()):
         raise VmctlError(

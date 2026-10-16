@@ -1,0 +1,10 @@
+name = "fileshare"
+description = "SFTP exchange access: read shared files and write only to this VM's own directory; no automatic mount"
+supported_families = ["debian", "alpine"]
+auto_apply = "never"
+
+[implementations.debian]
+packages = ["rclone", "ca-certificates"]
+
+[implementations.alpine]
+packages = ["rclone", "ca-certificates"]

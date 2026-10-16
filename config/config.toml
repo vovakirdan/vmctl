@@ -36,3 +36,17 @@ system_features_dir = "bootstrap/system"
 
 [binaries]
 # qm = "/usr/sbin/qm"
+
+# Optional fileshare access provisioning. Configure only after deploying SFTPGo.
+# See docs/fileshare.md. No password, API key or private key belongs in TOML.
+# [fileshare]
+# endpoint = "https://10.210.0.105:8443"
+# sftp_host = "10.210.0.105"
+# sftp_port = 2022
+# host_public_key = "ssh-ed25519 REPLACE_WITH_VERIFIED_PUBLIC_HOST_KEY"
+# ca_file = "fileshare-ca.crt"
+# api_key_file = "fileshare-api-key" # Root-owned regular file, mode 0600.
+# shared_directory = "/srv/files/shared"
+# firewall_vmid = 102
+# firewall_ipset = "vmctl-files-clients"
+# timeout_seconds = 15

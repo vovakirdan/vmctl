@@ -937,9 +937,10 @@ wheels = [
 
 [[package]]
 name = "vmctl"
-version = "0.7.0"
+version = "0.8.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "paramiko" },
     { name = "passlib" },
     { name = "platformdirs" },
@@ -962,6 +963,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=43" },
     { name = "paramiko", specifier = ">=4,<5" },
     { name = "passlib", specifier = ">=1.7.4,<2" },
     { name = "platformdirs", specifier = ">=4.3,<5" },

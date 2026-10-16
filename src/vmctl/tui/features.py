@@ -21,7 +21,10 @@ class FeatureChoices(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Label("System features", classes="section-title")
-        yield Static("Guest integration and desktop access. Defaults follow the selected template.")
+        yield Static(
+            "Guest integration, desktop access and optional infrastructure access. "
+            "Defaults follow the selected template."
+        )
         for item in self.selection.catalog.system_features:
             yield from self.choice(item, "system")
         for group, title, description in (
@@ -84,7 +87,9 @@ class FeatureChoices(Vertical):
                 checkbox.disabled = not supported or item.name in required
                 notes = []
                 if not supported:
-                    notes.append(f"Unavailable for {self.selection.template}.")
+                    notes.append(
+                        item.unavailable_reason or f"Unavailable for {self.selection.template}."
+                    )
                 elif item.name in required:
                     notes.append("Required by another selected feature/module.")
                 dependencies = item.members if prefix == "profile" else item.dependencies

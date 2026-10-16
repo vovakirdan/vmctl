@@ -8,6 +8,7 @@ from pathlib import Path
 
 from vmctl.config import Configuration
 from vmctl.errors import PartialDeleteError, VmctlError
+from vmctl.fileshare.service import FileshareService
 from vmctl.models import VM
 from vmctl.network.dnsmasq import DnsmasqReservations
 from vmctl.proxmox.client import ProxmoxClient
@@ -34,6 +35,8 @@ class DeleteVMService:
         config = self.client.vm_config(vm.vmid)
         if vm.template or config.get("template") == "1" or 9000 <= vm.vmid <= 9099:
             raise VmctlError("Templates and VMIDs 9000-9099 cannot be deleted by vmctl")
+        if config.get("protection") == "1":
+            raise VmctlError("VM is protected; vmctl will not stop or delete it")
         if "lock" in config:
             raise VmctlError("VM is locked; resolve the active Proxmox task first")
         mac = network_mac(config["net0"]) if "net0" in config else None
@@ -64,6 +67,15 @@ class DeleteVMService:
                 raise VmctlError("VM changed since confirmation; inspect it and retry")
             if plan.mac and any(entry.mac == plan.mac for entry in self.reservations.read()):
                 self.reservations.preflight()
+            metadata = decode_metadata(self.client.vm_config(plan.vm.vmid).get("description", ""))
+            if metadata.get("fileshare_account"):
+                FileshareService(self.config, self.client).revoke(
+                    metadata["fileshare_account"], metadata.get("invocation", "")
+                )
+            elif "fileshare" in metadata.get("system_features", "").split(","):
+                raise VmctlError(
+                    "Fileshare ownership metadata is missing; revoke access manually before deleting"
+                )
             if plan.vm.status != "stopped":
                 self.client.stop(plan.vm.vmid)
             self.client.destroy(plan.vm.vmid)

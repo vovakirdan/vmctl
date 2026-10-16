@@ -3,15 +3,18 @@
 Управление VM на Proxmox VE 9 с рабочего компьютера под Windows, Linux или macOS.
 Python 3.12+, uv, Typer и терминальный интерфейс на Textual. Исполнитель
 `vmctl-worker` работает только в Linux и выполняет каждый запрос на хосте
-Proxmox через OpenSSH. Без базы данных, демона и HTTP API.
+Proxmox через OpenSSH. Для vmctl не нужны база данных и демон; Proxmox HTTP API
+не используется. Опциональный обменник — отдельный сервис SFTPGo с REST API.
 
 Proxmox — источник истины для VM. `/etc/dnsmasq.d/vmctl-hosts.conf` — источник
 истины для DHCP-резервирований vmctl. Утилита не изменяет шаблоны, firewall хоста,
-NAT, WireGuard и конфигурацию публичного bridge.
+NAT, WireGuard и конфигурацию публичного bridge. Явно настроенная интеграция
+обменника управляет списком разрешённых IP в firewall его сервисной VM,
+не открывая публичные порты.
 
 ## Быстрый старт (Linux / WSL)
 
-Установите одинаковую версию **0.7.0** клиента и серверного исполнителя.
+Установите одинаковую версию **0.8.0** клиента и серверного исполнителя.
 Если исполнитель ещё не установлен, сначала выполните [установку на сервере](#установка-исполнителя-на-хосте-proxmox)
 и проверьте [требования к хосту](#требования-к-хосту).
 
@@ -157,7 +160,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Каталог `/opt/vmctl` и серверная конфигурация должны принадлежать администратору.
 Абсолютный путь исполнителя позволяет не зависеть от PATH login shell.
 Вместо `.` команде `uv tool install` можно передать готовый wheel. Установите
-совместимые версии с обеих сторон; текущая версия **0.7.0**, версия протокола **1**.
+совместимые версии с обеих сторон; текущая версия **0.8.0**, версия протокола **1**.
 
 `vmctl --local config init` устанавливает серверные TOML-файлы, системные
 возможности, модули разработки и гостевые скрипты в `/etc/vmctl`. `client.toml`
@@ -353,7 +356,9 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 
 Вместо `.` с обеих сторон можно передать wheel из `dist/`. Переустановка и
 `config init` сохраняют существующие настройки; новые поля добавляются явно.
-Версия 0.7.0 добавляет прямую передачу файлов по SFTP и прогресс операций;
+Версия 0.8.0 добавляет обменник SFTPGo с явно включаемым доступом для VM,
+созданием и отзывом индивидуальных учётных записей. См. [инструкцию](docs/fileshare.ru.md).
+Версия 0.7.0 добавила прямую передачу файлов по SFTP и прогресс операций;
 дубликаты VM, изменение CPU/RAM и настройка SPICE также доступны. Обновите
 клиент и сервер. После обновления дополнения откройте новый shell.
 
@@ -376,8 +381,8 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 `/root/.local/bin/uv`; при необходимости укажите другой путь к uv:
 
 ```sh
-scp dist/vmctl-0.7.0-py3-none-any.whl pxmx:/tmp/
-ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.7.0-py3-none-any.whl --python 3.12 --force --reinstall'
+scp dist/vmctl-0.8.0-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.8.0-py3-none-any.whl --python 3.12 --force --reinstall'
 ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
 vmctl config validate
 vmctl tui --read-only
@@ -817,6 +822,30 @@ SSH-ключей и учётных данных. Гость должен раб�
 действие не запускает локальный viewer и не выдаёт билет подключения.
 Firewall, публичные port forwards, мосты и WireGuard не меняются.
 
+## Общий файлообменник
+
+Опциональный обменник SFTPGo работает отдельно от прямой передачи `vmctl upload`.
+Проекты продолжают работать на собственных дисках VM; обменник нужен для
+переноса файлов между компьютером и выбранными VM. Постоянное монтирование не требуется.
+
+```sh
+vmctl create project-vm debian small --with-system fileshare --dry-run
+vmctl create project-vm debian small --with-system fileshare
+```
+
+В форме создания TUI включите **fileshare** в группе **System features**.
+Каждая выбранная VM получает индивидуальный SFTP-ключ и учётную запись.
+Она читает общие файлы, а изменять может только свою уникальную директорию.
+Остальные VM не получают доступ автоматически. Удаление VM отзывает доступ,
+сохраняя её файлы. Клонирование VM с активным доступом к обменнику запрещено,
+чтобы копия не унаследовала действующий ключ.
+
+В подготовленной VM команда `vmctl-files` запускает rclone с отдельной
+конфигурацией и подключением `files:`. Свой каталог для записи можно узнать через
+`vmctl info VM`. С компьютера подключайтесь через OpenSSH SFTP или графический клиент.
+Адреса, команды, права и администрирование описаны в [русской инструкции](docs/fileshare.ru.md)
+([English](docs/fileshare.md)).
+
 ## Редактируемая конфигурация и bootstrap
 
 При каждом запуске исполнителя серверные TOML перечитываются; нет демона
@@ -927,7 +956,9 @@ debug-dev = ["surge-dev", "debug-tools"]
 system_features_dir = "bootstrap/system"
 ```
 
-Поставляются возможности `qemu-agent` и `desktop-rdp`. По умолчанию `qemu-agent`
+Поставляются возможности `qemu-agent`, `desktop-rdp` и явно включаемый `fileshare`.
+Для `fileshare` нужна конфигурация SFTPGo на worker; автоматически он не выбирается.
+См. [общий файлообменник](#общий-файлообменник). По умолчанию `qemu-agent`
 применяется ко всем шаблонам и обеспечивает интеграцию гостя, CA certificates
 и sudo. `desktop-rdp` применяется при `desktop = true` и зависит от
 `qemu-agent`; общие зависимости выполняются один раз. Системный bootstrap

@@ -1,5 +1,7 @@
 """Editable server catalogs remain read-only and honor OS compatibility."""
 
+from pathlib import Path
+
 from conftest import FakeRunner
 
 from vmctl.config import Configuration
@@ -10,7 +12,11 @@ def test_catalog_is_read_only_and_separates_categories(
     config: Configuration, runner: FakeRunner
 ) -> None:
     catalog = build_catalog(config)
-    assert {item.name for item in catalog.system_features} == {"qemu-agent", "desktop-rdp"}
+    assert {item.name for item in catalog.system_features} == {
+        "qemu-agent",
+        "desktop-rdp",
+        "fileshare",
+    }
     assert "qemu-agent" not in {item.name for item in catalog.modules}
     desktop = next(item for item in catalog.system_features if item.name == "desktop-rdp")
     assert desktop.templates == ("ubuntu-desktop",)
@@ -18,6 +24,39 @@ def test_catalog_is_read_only_and_separates_categories(
     assert "alpine" not in node.templates
     assert str(catalog.pool_start) == "10.210.0.100" and not runner.calls
     assert next(item for item in catalog.profiles if item.name == "surge-dev").templates
+
+
+def test_fileshare_requires_worker_configuration_and_is_never_an_automatic_default(
+    config: Configuration,
+) -> None:
+    catalog = build_catalog(config)
+    fileshare = next(item for item in catalog.system_features if item.name == "fileshare")
+    assert fileshare.templates == ()
+    assert fileshare.unavailable_reason and "Configure fileshare" in fileshare.unavailable_reason
+    assert all("fileshare" not in names for names in catalog.system_defaults.values())
+    configured = config.model_copy(
+        update={
+            "host": config.host.model_copy(
+                update={
+                    "fileshare": {
+                        "endpoint": "https://10.210.0.110:8443",
+                        "sftp_host": "10.210.0.110",
+                        "firewall_vmid": 110,
+                        "host_public_key": Path(config.host.ssh_key).read_text().strip(),
+                        "ca_file": "/no-read-needed/cert.pem",
+                        "api_key_file": "/no-read-needed/secret",
+                    }
+                }
+            )
+        }
+    )
+    configured_catalog = build_catalog(configured)
+    configured_fileshare = next(
+        item for item in configured_catalog.system_features if item.name == "fileshare"
+    )
+    assert "debian" in configured_fileshare.templates
+    assert configured_fileshare.unavailable_reason is None
+    assert all("fileshare" not in names for names in configured_catalog.system_defaults.values())
 
 
 def test_catalog_reads_new_user_module(config: Configuration) -> None:

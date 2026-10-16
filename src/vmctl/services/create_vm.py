@@ -13,6 +13,7 @@ from vmctl.bootstrap.renderer import BootstrapExecutor
 from vmctl.bootstrap.system import select_bootstrap
 from vmctl.config import Configuration
 from vmctl.errors import CreationError, RepeatedRequestError, VmctlError
+from vmctl.fileshare.service import Access, FileshareService, generate_access, inject_access
 from vmctl.models import CreatePlan, CreateRequest, CreateResult, validate_name
 from vmctl.network.allocator import AddressAllocator
 from vmctl.network.dnsmasq import DnsmasqReservations, Reservation
@@ -70,6 +71,8 @@ class CreateVMService:
             else read_public_key(self.config.path(self.config.host.ssh_key))
         )
         selection = select_bootstrap(self.config, request)
+        if any(f.name == "fileshare" for f in selection.system_features):
+            FileshareService(self.config, self.client).preflight()
         data = self.bootstrap.render(
             template,
             request.name,
@@ -165,6 +168,8 @@ class CreateVMService:
             mac: str | None = None
             reservation_attempted = False
             snippet_written = False
+            access: Access | None = None
+            fileshare: FileshareService | None = None
             try:
                 self.client.clone(plan.template_vmid, vmid, request.name, description, progress)
                 cloned = True
@@ -206,11 +211,27 @@ class CreateVMService:
                 )
                 reservation_attempted = True
                 self.reservations.add(Reservation(mac, address, request.name, vmid))
+                user_data = plan.user_data
+                if "fileshare" in plan.system_features:
+                    fileshare = FileshareService(self.config, self.client)
+                    access = generate_access(fileshare.settings, request.name, vmid, token)
+                    metadata.update(
+                        fileshare_account=access.account,
+                        fileshare_directory=access.directory,
+                        fileshare_endpoint=access.endpoint,
+                    )
+                    self.client.configure(
+                        vmid, {"description": encode_metadata(request.description, metadata)}
+                    )
+                    fileshare.provision(access, address)
+                    user_data = inject_access(
+                        user_data, access, fileshare.settings, self.config.host.username
+                    )
                 # Treat an atomic-write error after replace as a possibly created snippet.
                 if snippet.exists() or snippet.is_symlink():
                     raise VmctlError(f"Snippet already exists: {snippet}")
                 snippet_written = True
-                atomic_write(snippet, plan.user_data.encode(), mode=0o600)
+                atomic_write(snippet, user_data.encode(), mode=0o600)
                 # qm's CLI expects a public-key filename, unlike the API's sshkeys property.
                 with tempfile.TemporaryDirectory(prefix="vmctl-key-") as key_directory:
                     key_file = Path(key_directory) / "public.pub"
@@ -232,6 +253,14 @@ class CreateVMService:
                 if request.start:
                     self.client.start(vmid)
             except (VmctlError, OSError, KeyboardInterrupt) as exc:
+                access_failures: list[str] = []
+                if fileshare is not None and access is not None:
+                    try:
+                        fileshare.revoke(access.account, token, rollback=True)
+                    except (VmctlError, OSError) as cleanup:
+                        access_failures.append(
+                            f"Fileshare account {access.account} requires cleanup: {cleanup}"
+                        )
                 failures = self._rollback(
                     vmid,
                     token,
@@ -239,6 +268,7 @@ class CreateVMService:
                     mac if reservation_attempted else None,
                     snippet if snippet_written else None,
                 )
+                failures.extend(access_failures)
                 details = (
                     "; ".join(failures) if failures else "Invocation-owned resources cleaned up"
                 )
@@ -268,6 +298,9 @@ class CreateVMService:
             plan.system_features,
             plan.desktop,
             plan.desktop and "desktop-rdp" in plan.system_features,
+            access.account if access else None,
+            access.directory if access else None,
+            access.endpoint if access else None,
         )
 
     def _rollback(

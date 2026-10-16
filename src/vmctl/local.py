@@ -10,6 +10,7 @@ from vmctl.bootstrap.resolver import validate_definitions
 from vmctl.bootstrap.system import validate_system_features
 from vmctl.config import Configuration, Preset, Template, load_config, load_spice_settings
 from vmctl.errors import VmctlError
+from vmctl.fileshare.config import settings as fileshare_settings
 from vmctl.models import (
     CloneRequest,
     CreateRequest,
@@ -100,6 +101,7 @@ class LocalOperations:
 
     def plan_create(self, request: CreateRequest) -> CreatePreview:
         plan = self.creator.plan(request)
+        fileshare = fileshare_settings(self.config) if "fileshare" in plan.system_features else None
         return CreatePreview(
             plan.template_vmid,
             plan.resources,
@@ -111,6 +113,7 @@ class LocalOperations:
             plan.system_features,
             plan.desktop,
             plan.requires_desktop_password,
+            f"sftp://{fileshare.sftp_host}:{fileshare.sftp_port}" if fileshare else None,
         )
 
     def create(

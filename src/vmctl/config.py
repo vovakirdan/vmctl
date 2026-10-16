@@ -91,6 +91,7 @@ class HostConfig(StrictModel):
     lock_file: str = "/run/lock/vmctl.lock"
     lock_timeout: int = Field(default=30, gt=0)
     spice_file: str = "spice.toml"
+    fileshare: dict[str, Any] | None = Field(default=None, repr=False)
     network: NetworkConfig = Field(default_factory=NetworkConfig)
     proxmox: ProxmoxConfig = Field(default_factory=ProxmoxConfig)
     bootstrap: BootstrapConfig = Field(default_factory=BootstrapConfig)
@@ -219,6 +220,10 @@ def load_config(root: Path) -> Configuration:
                 "profiles": profiles["profiles"],
             }
         )
+        if config.host.fileshare is not None:
+            from vmctl.fileshare.config import settings
+
+            settings(config)
         if not config.templates or not config.presets:
             raise VmctlError("At least one template and preset are required")
         if len({t.vmid for t in config.templates.values()}) != len(config.templates):

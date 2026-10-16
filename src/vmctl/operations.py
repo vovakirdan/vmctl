@@ -48,6 +48,7 @@ class CreatePreview:
     system_features: tuple[str, ...]
     desktop: bool
     requires_desktop_password: bool
+    fileshare_endpoint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -137,6 +138,7 @@ class CatalogItem:
     dependencies: tuple[str, ...] = ()
     members: tuple[str, ...] = ()
     group: ModuleGroup = "development"
+    unavailable_reason: str | None = None
 
 
 @dataclass(frozen=True)

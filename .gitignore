@@ -34,3 +34,7 @@ logs/
 .serena/
 .DS_Store
 Thumbs.db
+
+# Fileshare deployment credentials
+fileshare-api-key
+fileshare-admin.json

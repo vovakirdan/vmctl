@@ -3,15 +3,18 @@
 Manage Proxmox VE 9 VMs from a Windows, Linux or macOS workstation using
 Python 3.12+, uv, Typer and a Textual terminal interface. A Linux-only
 `vmctl-worker` executes each request on the Proxmox host over OpenSSH.
-No database, daemon or HTTP API.
+vmctl needs no database or daemon and uses no Proxmox HTTP API. Optional
+fileshare integration uses a separately deployed SFTPGo service and its REST API.
 
 Proxmox is the source of truth for VMs. `/etc/dnsmasq.d/vmctl-hosts.conf`
 is the source of truth for vmctl DHCP reservations. Templates, host firewall,
 NAT, WireGuard and public bridge configuration are not modified by this tool.
+An explicitly configured fileshare integration maintains an access IP set on
+its own service VM firewall; it does not open public ports.
 
 ## Quickstart (Linux / WSL)
 
-Use the same **0.7.0** release for the workstation client and server worker.
+Use the same **0.8.0** release for the workstation client and server worker.
 If the worker is not installed yet, follow [server installation](#install-the-executor-on-the-proxmox-host)
 and [host prerequisites](#host-prerequisites) first.
 
@@ -153,7 +156,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Keep `/opt/vmctl` and server configuration owned by the administrator. The
 absolute worker path works without relying on a login shell's PATH. An existing
 wheel can be supplied to `uv tool install` instead of `.`. Install compatible
-versions on both sides; this release is **0.7.0**, with protocol version **1**.
+versions on both sides; this release is **0.8.0**, with protocol version **1**.
 
 `vmctl --local config init` installs the server TOML files, system features,
 development modules and guest scripts into `/etc/vmctl`. It never installs
@@ -344,7 +347,9 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 
 A wheel from `dist/` may replace `.` on both sides. Reinstalling and `config init`
 preserve existing settings; add new settings explicitly when needed. Version
-0.7.0 adds direct SFTP uploads and transfer/operation progress, alongside VM
+0.8.0 adds opt-in shared file exchange through SFTPGo, including per-VM access
+provisioning and revocation. See the [fileshare runbook](docs/fileshare.md).
+Version 0.7.0 added direct SFTP uploads and transfer/operation progress, alongside VM
 duplication, CPU/RAM editing and SPICE setup. Update the worker as well as the
 client. Reopen the shell after refreshing completion.
 
@@ -366,8 +371,8 @@ worker over your existing SSH alias. These commands assume root access through
 `pxmx` and uv installed at `/root/.local/bin/uv`; adjust that uv path if needed:
 
 ```sh
-scp dist/vmctl-0.7.0-py3-none-any.whl pxmx:/tmp/
-ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.7.0-py3-none-any.whl --python 3.12 --force --reinstall'
+scp dist/vmctl-0.8.0-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.8.0-py3-none-any.whl --python 3.12 --force --reinstall'
 ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
 vmctl config validate
 vmctl tui --read-only
@@ -788,6 +793,30 @@ Connect with your private Proxmox SPICE console/virt-viewer workflow after setup
 this action does not launch a local viewer or issue a connection ticket.
 No firewall, public port-forward, bridge or WireGuard settings change.
 
+## Shared file exchange
+
+The optional SFTPGo exchange is separate from direct `vmctl upload`. Projects
+continue to run on their own VM disks; use the exchange to move files between
+your computer and selected VMs. No persistent mount is required.
+
+```sh
+vmctl create project-vm debian small --with-system fileshare --dry-run
+vmctl create project-vm debian small --with-system fileshare
+```
+
+In the TUI creation form, enable **fileshare** under **System features**.
+Each selected VM receives an individual SFTP key and account. It can read shared
+files and write only within its own unique directory; other VMs receive no
+access automatically. Deleting the VM revokes access and retains its files.
+Cloning a VM with active fileshare access is rejected to prevent copied keys
+from inheriting access.
+
+Inside a provisioned guest, `vmctl-files` runs rclone with a dedicated
+configuration and the `files:` remote. Run `vmctl info VM` to find its own writable
+directory. For workstation access, use OpenSSH SFTP or an optional GUI client.
+See the [English runbook](docs/fileshare.md) ([Russian](docs/fileshare.ru.md))
+for connection details, file commands, permissions and administration.
+
 ## Editable configuration and bootstrap
 
 Every worker invocation rereads server TOML; there is no reload daemon or Python
@@ -893,7 +922,9 @@ in `config.toml`:
 system_features_dir = "bootstrap/system"
 ```
 
-The supplied features are `qemu-agent` and `desktop-rdp`. `qemu-agent` applies
+The supplied features are `qemu-agent`, `desktop-rdp` and opt-in `fileshare`.
+`fileshare` requires configured SFTPGo access on the worker and is never selected
+automatically. See [shared file exchange](#shared-file-exchange). `qemu-agent` applies
 to all templates by default and provides guest integration, CA certificates
 and sudo. `desktop-rdp` applies when `desktop = true` and depends on
 `qemu-agent`; shared dependencies are applied once. It does not add development

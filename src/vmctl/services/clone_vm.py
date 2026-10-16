@@ -46,6 +46,13 @@ class CloneVMService:
             raise VmctlError(
                 "Clone requires an existing VM; use create for configured cloud templates"
             )
+        metadata = decode_metadata(config.get("description", ""))
+        if metadata.get("fileshare_account") or "fileshare" in metadata.get(
+            "system_features", ""
+        ).split(","):
+            raise VmctlError(
+                "Cloning a fileshare-enabled VM would copy its private access key; create a fresh VM instead"
+            )
         if any(existing.name == request.name for existing in self.client.inventory()):
             raise VmctlError(f"VM name {request.name!r} already exists")
         if "lock" in config:
