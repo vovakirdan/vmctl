@@ -27,7 +27,7 @@ def test_init_installs_complete_configuration(tmp_path: Path) -> None:
     assert len(config.templates) == 5
     assert len(config.presets) == 4
     assert "system" not in modules and "rust" in modules
-    assert set(features) == {"qemu-agent", "desktop-rdp", "fileshare"}
+    assert set(features) == {"qemu-agent", "desktop-rdp", "fileshare", "agentmemory"}
     assert (root / "bootstrap/scripts/rust-install.sh").is_file()
     assert result.created and not result.kept
     assert all(path.stat().st_mode & 0o777 == 0o644 for path in result.created)

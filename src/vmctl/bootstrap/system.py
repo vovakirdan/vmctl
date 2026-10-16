@@ -96,6 +96,10 @@ def select_bootstrap(config: Configuration, request: CreateRequest) -> Bootstrap
         from vmctl.fileshare.config import settings
 
         settings(config)
+    if any(feature.name == "agentmemory" for feature in selected):
+        from vmctl.agentmemory.config import settings as memory_settings
+
+        memory_settings(config)
     modules = load_modules(config)
     if features.keys() & (modules.keys() | config.profiles.keys()):
         raise VmctlError(

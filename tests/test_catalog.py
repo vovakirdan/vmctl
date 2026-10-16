@@ -16,6 +16,7 @@ def test_catalog_is_read_only_and_separates_categories(
         "qemu-agent",
         "desktop-rdp",
         "fileshare",
+        "agentmemory",
     }
     assert "qemu-agent" not in {item.name for item in catalog.modules}
     desktop = next(item for item in catalog.system_features if item.name == "desktop-rdp")
@@ -85,3 +86,33 @@ def test_catalog_supplies_editable_defaults_and_dependencies(config: Configurati
         update={"system_features": []}
     )
     assert build_catalog(config).system_defaults["ubuntu-server"] == ()
+
+
+def test_agentmemory_requires_configuration_and_stays_opt_in(config: Configuration) -> None:
+    catalog = build_catalog(config)
+    feature = next(item for item in catalog.system_features if item.name == "agentmemory")
+    assert feature.templates == ()
+    assert feature.unavailable_reason and "Configure agentmemory" in feature.unavailable_reason
+    assert all("agentmemory" not in names for names in catalog.system_defaults.values())
+    assert "agentmemory" not in {item.name for item in catalog.modules}
+    configured = config.model_copy(
+        update={
+            "host": config.host.model_copy(
+                update={
+                    "agentmemory": {
+                        "endpoint": "https://10.210.0.110",
+                        "ca_file": "/not-read-by-catalog/ca.crt",
+                        "management_host": "10.210.0.110",
+                        "management_key_file": "/not-read-by-catalog/key",
+                        "management_known_hosts_file": "/not-read-by-catalog/known_hosts",
+                        "firewall_vmid": 110,
+                    }
+                }
+            )
+        }
+    )
+    feature = next(
+        item for item in build_catalog(configured).system_features if item.name == "agentmemory"
+    )
+    assert "debian" in feature.templates and "rocky" not in feature.templates
+    assert feature.unavailable_reason is None

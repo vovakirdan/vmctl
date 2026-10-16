@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodically check the active agentmemory backend
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=30s
+Unit=vmctl-agentmemory-healthcheck.service
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

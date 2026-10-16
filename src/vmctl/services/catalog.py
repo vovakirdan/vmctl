@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from ipaddress import IPv4Address
 
+from vmctl.agentmemory.config import settings as agentmemory_settings
 from vmctl.bootstrap.models import load_modules
 from vmctl.bootstrap.resolver import resolve_modules, validate_definitions
 from vmctl.bootstrap.system import resolve_system_features, validate_system_features
@@ -44,6 +45,10 @@ def build_catalog(config: Configuration) -> Catalog:
         return supported_templates(config, check)
 
     def feature_support(name: str) -> tuple[str, ...]:
+        if name == "agentmemory" and config.host.agentmemory is None:
+            return ()
+        if name == "agentmemory":
+            agentmemory_settings(config)
         if name == "fileshare" and config.host.fileshare is None:
             return ()
         if name == "fileshare":
@@ -84,6 +89,8 @@ def build_catalog(config: Configuration) -> Catalog:
                 tuple(feature.dependencies),
                 unavailable_reason="Configure fileshare on the worker before granting VM access."
                 if name == "fileshare" and config.host.fileshare is None
+                else "Configure agentmemory on the worker before granting VM access."
+                if name == "agentmemory" and config.host.agentmemory is None
                 else None,
             )
             for name, feature in sorted(features.items())

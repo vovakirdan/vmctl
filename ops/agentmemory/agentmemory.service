@@ -1,0 +1,27 @@
+[Unit]
+Description=Shared agentmemory server
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/srv/agentmemory
+
+[Service]
+Type=simple
+User=agentmemory
+Group=agentmemory
+WorkingDirectory=/srv/agentmemory
+EnvironmentFile=/etc/agentmemory/server.env
+ExecStartPre=/usr/bin/mountpoint -q /srv/agentmemory
+ExecStart=/opt/agentmemory/node/bin/node /opt/agentmemory/app/node_modules/@agentmemory/agentmemory/dist/cli.mjs --data-dir /srv/agentmemory/state
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+KillMode=control-group
+UMask=0077
+MemoryMax=3G
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

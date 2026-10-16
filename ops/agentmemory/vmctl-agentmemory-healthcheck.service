@@ -1,0 +1,14 @@
+[Unit]
+Description=Check the active agentmemory backend and recover failed child processes
+After=agentmemory.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/python3 /usr/local/libexec/vmctl-agentmemory-healthcheck.py
+TimeoutStartSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict

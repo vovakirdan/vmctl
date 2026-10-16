@@ -5,16 +5,17 @@ Python 3.12+, uv, Typer и терминальный интерфейс на Text
 `vmctl-worker` работает только в Linux и выполняет каждый запрос на хосте
 Proxmox через OpenSSH. Для vmctl не нужны база данных и демон; Proxmox HTTP API
 не используется. Опциональный обменник — отдельный сервис SFTPGo с REST API.
+Опциональная agentmemory подключает выбранные VM к отдельной общей памяти.
 
 Proxmox — источник истины для VM. `/etc/dnsmasq.d/vmctl-hosts.conf` — источник
 истины для DHCP-резервирований vmctl. Утилита не изменяет шаблоны, firewall хоста,
-NAT, WireGuard и конфигурацию публичного bridge. Явно настроенная интеграция
-обменника управляет списком разрешённых IP в firewall его сервисной VM,
+NAT, WireGuard и конфигурацию публичного bridge. Явно настроенные интеграции
+обменника и agentmemory управляют списками разрешённых IP в firewall своих сервисных VM,
 не открывая публичные порты.
 
 ## Быстрый старт (Linux / WSL)
 
-Установите одинаковую версию **0.8.0** клиента и серверного исполнителя.
+Установите одинаковую версию **0.9.0** клиента и серверного исполнителя.
 Если исполнитель ещё не установлен, сначала выполните [установку на сервере](#установка-исполнителя-на-хосте-proxmox)
 и проверьте [требования к хосту](#требования-к-хосту).
 
@@ -160,7 +161,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Каталог `/opt/vmctl` и серверная конфигурация должны принадлежать администратору.
 Абсолютный путь исполнителя позволяет не зависеть от PATH login shell.
 Вместо `.` команде `uv tool install` можно передать готовый wheel. Установите
-совместимые версии с обеих сторон; текущая версия **0.8.0**, версия протокола **1**.
+совместимые версии с обеих сторон; текущая версия **0.9.0**, версия протокола **1**.
 
 `vmctl --local config init` устанавливает серверные TOML-файлы, системные
 возможности, модули разработки и гостевые скрипты в `/etc/vmctl`. `client.toml`
@@ -356,7 +357,9 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 
 Вместо `.` с обеих сторон можно передать wheel из `dist/`. Переустановка и
 `config init` сохраняют существующие настройки; новые поля добавляются явно.
-Версия 0.8.0 добавляет обменник SFTPGo с явно включаемым доступом для VM,
+Версия 0.9.0 добавляет общую agentmemory, индивидуальный отзыв доступа VM
+и настройку поддерживаемых агентов. См. [инструкцию](docs/agentmemory.ru.md).
+Версия 0.8.0 добавила обменник SFTPGo с явно включаемым доступом для VM,
 созданием и отзывом индивидуальных учётных записей. См. [инструкцию](docs/fileshare.ru.md).
 Версия 0.7.0 добавила прямую передачу файлов по SFTP и прогресс операций;
 дубликаты VM, изменение CPU/RAM и настройка SPICE также доступны. Обновите
@@ -381,8 +384,8 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 `/root/.local/bin/uv`; при необходимости укажите другой путь к uv:
 
 ```sh
-scp dist/vmctl-0.8.0-py3-none-any.whl pxmx:/tmp/
-ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.8.0-py3-none-any.whl --python 3.12 --force --reinstall'
+scp dist/vmctl-0.9.0-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.9.0-py3-none-any.whl --python 3.12 --force --reinstall'
 ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
 vmctl config validate
 vmctl tui --read-only
@@ -846,6 +849,36 @@ vmctl create project-vm debian small --with-system fileshare
 Адреса, команды, права и администрирование описаны в [русской инструкции](docs/fileshare.ru.md)
 ([English](docs/fileshare.md)).
 
+## Общая память агентов
+
+Общая память — явно включаемая **системная возможность**, отдельная от языков,
+инструментов разработки и установки агентов. Первая версия поддерживает гостей
+семейства Debian.
+
+```sh
+vmctl create project-vm debian small --with-system agentmemory --dry-run
+vmctl create project-vm debian small --with codex,claude,opencode --with-system fileshare,agentmemory
+vmctl info project-vm
+```
+
+В TUI включите **agentmemory** в группе **System features**. Пока worker не
+настроен, флажок выключен и недоступен, рядом указана причина. Каждая допущенная
+VM получает отдельный ключ с возможностью отзыва и доступ на чтение/запись одной
+общей памяти. Для установленных Codex, Claude Code и OpenCode настраиваются
+поддерживаемые MCP/hooks; сама возможность не устанавливает агентов. CLI/TUI
+показывают endpoint, ID клиента и запрошенные адаптеры, не утверждая, что bootstrap
+внутри гостя или автоматическое сохранение уже завершились. Для native hooks Codex
+при первом запуске отдельно проверьте текущие определения agentmemory через `/hooks`;
+MCP работает без этого разрешения. vmctl не обходит глобальное доверие к hooks.
+У существующего native-плагина может потребоваться проверка remote endpoint;
+подробности — в инструкции ниже.
+
+Сервер остаётся приватным. Удаление VM отзывает доступ и сохраняет записи памяти.
+Клонирование VM с действующими ключами памяти запрещено. Текущая локальная
+agentmemory, её данные и подключения агентов рабочего компьютера не меняются.
+См. [русскую инструкцию](docs/agentmemory.ru.md) ([English](docs/agentmemory.md)):
+устройство сервиса, проверки, администрирование и отдельный этап переноса записей.
+
 ## Редактируемая конфигурация и bootstrap
 
 При каждом запуске исполнителя серверные TOML перечитываются; нет демона
@@ -956,7 +989,7 @@ debug-dev = ["surge-dev", "debug-tools"]
 system_features_dir = "bootstrap/system"
 ```
 
-Поставляются возможности `qemu-agent`, `desktop-rdp` и явно включаемый `fileshare`.
+Поставляются возможности `qemu-agent`, `desktop-rdp` и явно включаемые `fileshare`, `agentmemory`.
 Для `fileshare` нужна конфигурация SFTPGo на worker; автоматически он не выбирается.
 См. [общий файлообменник](#общий-файлообменник). По умолчанию `qemu-agent`
 применяется ко всем шаблонам и обеспечивает интеграцию гостя, CA certificates

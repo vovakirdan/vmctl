@@ -4,6 +4,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from vmctl.agentmemory.config import settings as agentmemory_settings
 from vmctl.bootstrap.models import load_modules
 from vmctl.bootstrap.renderer import CloudInitRenderer
 from vmctl.bootstrap.resolver import validate_definitions
@@ -102,6 +103,9 @@ class LocalOperations:
     def plan_create(self, request: CreateRequest) -> CreatePreview:
         plan = self.creator.plan(request)
         fileshare = fileshare_settings(self.config) if "fileshare" in plan.system_features else None
+        memory = (
+            agentmemory_settings(self.config) if "agentmemory" in plan.system_features else None
+        )
         return CreatePreview(
             plan.template_vmid,
             plan.resources,
@@ -114,6 +118,10 @@ class LocalOperations:
             plan.desktop,
             plan.requires_desktop_password,
             f"sftp://{fileshare.sftp_host}:{fileshare.sftp_port}" if fileshare else None,
+            memory.endpoint if memory else None,
+            tuple(name for name in plan.modules if name in {"codex", "claude", "opencode"})
+            if memory
+            else (),
         )
 
     def create(

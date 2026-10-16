@@ -48,6 +48,14 @@ def details_text(details: VMDetails) -> str:
             "Access: read shared; write/delete own directory (default; server policy may differ).",
             "Client: vmctl-files (rclone; no mount)",
         ]
+    if "agentmemory" in details.system_features:
+        lines += [
+            "",
+            f"Shared memory: {details.metadata.get('agentmemory_endpoint', 'unknown')}",
+            f"Client ID: {details.metadata.get('agentmemory_client_id', 'unknown')}",
+            "Agent adapters requested: " + (details.metadata.get("agentmemory_adapters") or "none"),
+            "Access: shared read/write; guest setup not verified.",
+        ]
     return "\n".join(lines)
 
 
@@ -72,6 +80,13 @@ def preview_text(preview: CreatePreview) -> str:
             "Access: read shared files; write/delete only in this VM's own directory.",
             "Own directory is allocated using the VM name, VMID and creation ID.",
             "Client: vmctl-files (rclone; no mount). Preview does not create credentials.",
+        ]
+    if "agentmemory" in preview.system_features:
+        lines += [
+            "",
+            f"Shared memory: {preview.agentmemory_endpoint or 'configured HTTPS endpoint'}",
+            "Agent adapters requested: " + (", ".join(preview.agentmemory_adapters) or "none"),
+            "Access: shared read/write. Preview creates no credentials or memory records.",
         ]
     return "\n".join(lines)
 
@@ -98,6 +113,14 @@ def result_text(result: CreateResult) -> str:
             f"Own directory: files:{result.fileshare_directory}",
             "Access: read shared files; write/delete only in own directory (default).",
             "Client: vmctl-files (rclone; no mount)",
+        ]
+    if result.agentmemory_endpoint:
+        lines += [
+            "",
+            f"Shared memory: {result.agentmemory_endpoint}",
+            f"Client ID: {result.agentmemory_client_id}",
+            "Agent adapters requested: " + (", ".join(result.agentmemory_adapters) or "none"),
+            "Access: shared read/write; guest setup not verified.",
         ]
     lines += ["", "Guest bootstrap completion has not been verified."]
     return "\n".join(lines)

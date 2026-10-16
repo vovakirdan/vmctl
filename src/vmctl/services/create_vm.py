@@ -9,6 +9,8 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
+from vmctl.agentmemory.service import AgentmemoryService, MemoryAccess
+from vmctl.agentmemory.service import generate_access as generate_memory_access
 from vmctl.bootstrap.renderer import BootstrapExecutor
 from vmctl.bootstrap.system import select_bootstrap
 from vmctl.config import Configuration
@@ -73,6 +75,8 @@ class CreateVMService:
         selection = select_bootstrap(self.config, request)
         if any(f.name == "fileshare" for f in selection.system_features):
             FileshareService(self.config, self.client).preflight()
+        if any(f.name == "agentmemory" for f in selection.system_features):
+            AgentmemoryService(self.config, self.client).preflight()
         data = self.bootstrap.render(
             template,
             request.name,
@@ -170,6 +174,8 @@ class CreateVMService:
             snippet_written = False
             access: Access | None = None
             fileshare: FileshareService | None = None
+            memory_access: MemoryAccess | None = None
+            memory: AgentmemoryService | None = None
             try:
                 self.client.clone(plan.template_vmid, vmid, request.name, description, progress)
                 cloned = True
@@ -227,6 +233,30 @@ class CreateVMService:
                     user_data = inject_access(
                         user_data, access, fileshare.settings, self.config.host.username
                     )
+                if "agentmemory" in plan.system_features:
+                    from vmctl.agentmemory.bootstrap import inject_access as inject_memory_access
+
+                    memory = AgentmemoryService(self.config, self.client)
+                    memory_access = generate_memory_access(memory.settings, vmid, token)
+                    metadata.update(
+                        agentmemory_client_id=memory_access.client_id,
+                        agentmemory_endpoint=memory_access.endpoint,
+                        agentmemory_adapters=",".join(
+                            name for name in plan.modules if name in {"codex", "claude", "opencode"}
+                        ),
+                    )
+                    self.client.configure(
+                        vmid, {"description": encode_metadata(request.description, metadata)}
+                    )
+                    memory.provision(memory_access, address)
+                    user_data = inject_memory_access(
+                        user_data,
+                        memory_access,
+                        memory.settings,
+                        self.config.host.username,
+                        memory.ca_certificate,
+                        self.config,
+                    )
                 # Treat an atomic-write error after replace as a possibly created snippet.
                 if snippet.exists() or snippet.is_symlink():
                     raise VmctlError(f"Snippet already exists: {snippet}")
@@ -254,6 +284,13 @@ class CreateVMService:
                     self.client.start(vmid)
             except (VmctlError, OSError, KeyboardInterrupt) as exc:
                 access_failures: list[str] = []
+                if memory is not None and memory_access is not None:
+                    try:
+                        memory.revoke(memory_access.client_id, token, rollback=True)
+                    except (VmctlError, OSError) as cleanup:
+                        access_failures.append(
+                            f"Agentmemory client {memory_access.client_id} requires cleanup: {cleanup}"
+                        )
                 if fileshare is not None and access is not None:
                     try:
                         fileshare.revoke(access.account, token, rollback=True)
@@ -301,6 +338,11 @@ class CreateVMService:
             access.account if access else None,
             access.directory if access else None,
             access.endpoint if access else None,
+            memory_access.client_id if memory_access else None,
+            memory_access.endpoint if memory_access else None,
+            tuple(name for name in plan.modules if name in {"codex", "claude", "opencode"})
+            if memory_access
+            else (),
         )
 
     def _rollback(

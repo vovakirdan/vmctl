@@ -1,0 +1,9 @@
+name = "agentmemory"
+description = "Shared remote memory for installed AI agents; individual access key, no local memory server"
+supported_families = ["debian"]
+auto_apply = "never"
+
+[implementations.debian]
+packages = ["ca-certificates", "curl", "xz-utils", "python3", "python3-tomlkit", "libatomic1"]
+# Package and private fallback runtime versions are editable independently of development Node.
+scripts = [{file = "agentmemory-install.sh", args = ["{username}", "0.9.30", "24.21.0"]}]

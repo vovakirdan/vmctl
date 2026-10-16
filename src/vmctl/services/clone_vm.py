@@ -47,6 +47,12 @@ class CloneVMService:
                 "Clone requires an existing VM; use create for configured cloud templates"
             )
         metadata = decode_metadata(config.get("description", ""))
+        if metadata.get("agentmemory_client_id") or "agentmemory" in metadata.get(
+            "system_features", ""
+        ).split(","):
+            raise VmctlError(
+                "Cloning an agentmemory-enabled VM would copy its private access key; create a fresh VM instead"
+            )
         if metadata.get("fileshare_account") or "fileshare" in metadata.get(
             "system_features", ""
         ).split(","):

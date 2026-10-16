@@ -201,7 +201,7 @@ def create(
     with_system: Annotated[
         str,
         typer.Option(
-            help="Add guest system features, comma-separated, independently of development --with. Template defaults include qemu-agent and, for desktops, desktop-rdp. Opt-in fileshare configures vmctl-files (rclone) access: read shared files, write/delete only in this VM's directory; it requires worker fileshare configuration and does not mount a filesystem.",
+            help="Add guest system features, comma-separated, independently of development --with. Template defaults include qemu-agent and, for desktops, desktop-rdp. Opt-in fileshare configures vmctl-files (rclone) access: read shared files, write/delete only in this VM's directory; it requires worker fileshare configuration and does not mount a filesystem. Opt-in agentmemory connects supported installed AI agents to shared memory with individual revocable access; it requires worker agentmemory configuration, and does not install AI agents.",
             autocompletion=completion.system,
         ),
     ] = "",
@@ -290,6 +290,16 @@ def create(
                     "Fileshare access: read shared files; write/delete only in a new directory "
                     "identified by VM name, VMID and creation ID. No credentials created by dry-run."
                 )
+            if "agentmemory" in plan.system_features:
+                console.print(
+                    f"Shared memory: {plan.agentmemory_endpoint or 'configured HTTPS endpoint'}"
+                )
+                console.print(
+                    "Agent adapters requested: " + (", ".join(plan.agentmemory_adapters) or "none")
+                )
+                console.print(
+                    "Shared read/write access; dry-run creates no credentials or records."
+                )
             console.print(f"Optional modules: {', '.join(plan.modules) or 'none'}; start: {start}")
             if plan.desktop:
                 console.print(
@@ -343,6 +353,15 @@ def create(
                 "  Access: read shared files; write/delete only in own directory (default)."
             )
             console.print("  Client: vmctl-files (rclone; no mount)")
+        if result.agentmemory_endpoint:
+            console.print(f"\nShared memory: {result.agentmemory_endpoint}")
+            console.print(f"  Client ID: {result.agentmemory_client_id}")
+            console.print(
+                "  Agent adapters requested: " + (", ".join(result.agentmemory_adapters) or "none")
+            )
+            console.print(
+                "  Access: shared read/write; bootstrap completion has not been verified."
+            )
         console.print("Bootstrap execution inside the guest has not been verified.")
 
 
@@ -818,6 +837,16 @@ def info(
                 "Fileshare access",
                 "read shared; write/delete own directory (default; server policy may differ)",
             )
+        if "agentmemory" in details.system_features:
+            table.add_row("Shared memory", details.metadata.get("agentmemory_endpoint", "unknown"))
+            table.add_row(
+                "Memory client ID", details.metadata.get("agentmemory_client_id", "unknown")
+            )
+            table.add_row(
+                "Agent adapters requested",
+                details.metadata.get("agentmemory_adapters", "") or "none",
+            )
+            table.add_row("Memory access", "shared read/write; guest setup not verified")
         for key, value in sorted(details.config.items()):
             table.add_row(key, "<redacted>" if key in {"cipassword", "sshkeys"} else value)
         for key, value in sorted(details.metadata.items()):

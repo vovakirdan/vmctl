@@ -49,6 +49,8 @@ class CreatePreview:
     desktop: bool
     requires_desktop_password: bool
     fileshare_endpoint: str | None = None
+    agentmemory_endpoint: str | None = None
+    agentmemory_adapters: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

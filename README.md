@@ -5,16 +5,17 @@ Python 3.12+, uv, Typer and a Textual terminal interface. A Linux-only
 `vmctl-worker` executes each request on the Proxmox host over OpenSSH.
 vmctl needs no database or daemon and uses no Proxmox HTTP API. Optional
 fileshare integration uses a separately deployed SFTPGo service and its REST API.
+Optional agentmemory connects selected VMs to a separate shared memory service.
 
 Proxmox is the source of truth for VMs. `/etc/dnsmasq.d/vmctl-hosts.conf`
 is the source of truth for vmctl DHCP reservations. Templates, host firewall,
 NAT, WireGuard and public bridge configuration are not modified by this tool.
-An explicitly configured fileshare integration maintains an access IP set on
-its own service VM firewall; it does not open public ports.
+Explicitly configured fileshare and agentmemory integrations maintain access IP sets on
+their own service VM firewalls; they do not open public ports.
 
 ## Quickstart (Linux / WSL)
 
-Use the same **0.8.0** release for the workstation client and server worker.
+Use the same **0.9.0** release for the workstation client and server worker.
 If the worker is not installed yet, follow [server installation](#install-the-executor-on-the-proxmox-host)
 and [host prerequisites](#host-prerequisites) first.
 
@@ -156,7 +157,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Keep `/opt/vmctl` and server configuration owned by the administrator. The
 absolute worker path works without relying on a login shell's PATH. An existing
 wheel can be supplied to `uv tool install` instead of `.`. Install compatible
-versions on both sides; this release is **0.8.0**, with protocol version **1**.
+versions on both sides; this release is **0.9.0**, with protocol version **1**.
 
 `vmctl --local config init` installs the server TOML files, system features,
 development modules and guest scripts into `/etc/vmctl`. It never installs
@@ -347,7 +348,9 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 
 A wheel from `dist/` may replace `.` on both sides. Reinstalling and `config init`
 preserve existing settings; add new settings explicitly when needed. Version
-0.8.0 adds opt-in shared file exchange through SFTPGo, including per-VM access
+0.9.0 adds opt-in shared agentmemory, individually revocable VM access and
+automatic adapters for selected AI agents. See the [memory runbook](docs/agentmemory.md).
+Version 0.8.0 added opt-in shared file exchange through SFTPGo, including per-VM access
 provisioning and revocation. See the [fileshare runbook](docs/fileshare.md).
 Version 0.7.0 added direct SFTP uploads and transfer/operation progress, alongside VM
 duplication, CPU/RAM editing and SPICE setup. Update the worker as well as the
@@ -371,8 +374,8 @@ worker over your existing SSH alias. These commands assume root access through
 `pxmx` and uv installed at `/root/.local/bin/uv`; adjust that uv path if needed:
 
 ```sh
-scp dist/vmctl-0.8.0-py3-none-any.whl pxmx:/tmp/
-ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.8.0-py3-none-any.whl --python 3.12 --force --reinstall'
+scp dist/vmctl-0.9.0-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.9.0-py3-none-any.whl --python 3.12 --force --reinstall'
 ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
 vmctl config validate
 vmctl tui --read-only
@@ -817,6 +820,34 @@ directory. For workstation access, use OpenSSH SFTP or an optional GUI client.
 See the [English runbook](docs/fileshare.md) ([Russian](docs/fileshare.ru.md))
 for connection details, file commands, permissions and administration.
 
+## Shared agent memory
+
+Shared memory is an opt-in **system feature**, independent of development tools
+and AI agent installation. The first implementation supports Debian-family guests.
+
+```sh
+vmctl create project-vm debian small --with-system agentmemory --dry-run
+vmctl create project-vm debian small --with codex,claude,opencode --with-system fileshare,agentmemory
+vmctl info project-vm
+```
+
+Select **agentmemory** under **System features** in the TUI. When the worker is
+not configured, the checkbox stays off and explains why access is unavailable.
+Each approved VM receives an individual revocable key and can read/write the
+same global memory. Installed Codex, Claude Code and OpenCode receive supported
+MCP/hooks integration; this option does not install those agents. CLI/TUI output
+shows the endpoint, client ID and requested adapters, without claiming guest
+bootstrap or automatic capture has completed. Codex native hooks require a separate
+first-launch `/hooks` review of the current agentmemory definitions; MCP works
+without that approval. vmctl never bypasses global hook trust. Existing native
+plugins may need their remote endpoint reviewed; see the runbook below.
+
+The server remains private. Deleting a VM revokes its access and retains memory
+records. Cloning a VM with active memory credentials is blocked. Existing local
+agentmemory data and workstation agent connections are not migrated or changed.
+See the [English runbook](docs/agentmemory.md) ([Russian](docs/agentmemory.ru.md))
+for service details, verification, administration and the separate migration task.
+
 ## Editable configuration and bootstrap
 
 Every worker invocation rereads server TOML; there is no reload daemon or Python
@@ -922,7 +953,7 @@ in `config.toml`:
 system_features_dir = "bootstrap/system"
 ```
 
-The supplied features are `qemu-agent`, `desktop-rdp` and opt-in `fileshare`.
+The supplied features are `qemu-agent`, `desktop-rdp`, opt-in `fileshare` and opt-in `agentmemory`.
 `fileshare` requires configured SFTPGo access on the worker and is never selected
 automatically. See [shared file exchange](#shared-file-exchange). `qemu-agent` applies
 to all templates by default and provides guest integration, CA certificates

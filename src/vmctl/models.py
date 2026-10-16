@@ -198,3 +198,6 @@ class CreateResult:
     fileshare_account: str | None = None
     fileshare_directory: str | None = None
     fileshare_endpoint: str | None = None
+    agentmemory_client_id: str | None = None
+    agentmemory_endpoint: str | None = None
+    agentmemory_adapters: tuple[str, ...] = ()

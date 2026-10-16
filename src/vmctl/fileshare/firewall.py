@@ -2,14 +2,22 @@
 
 import json
 from ipaddress import IPv4Address, IPv4Network
+from typing import Protocol
 
 from vmctl.errors import VmctlError
-from vmctl.fileshare.config import FileshareSettings
 from vmctl.proxmox.client import ProxmoxClient
 
 
+class FirewallSettings(Protocol):
+    @property
+    def firewall_vmid(self) -> int: ...
+
+    @property
+    def firewall_ipset(self) -> str: ...
+
+
 class FileshareFirewall:
-    def __init__(self, client: ProxmoxClient, settings: FileshareSettings) -> None:
+    def __init__(self, client: ProxmoxClient, settings: FirewallSettings) -> None:
         self.client = client
         self.path = (
             f"/nodes/{client.node}/qemu/{settings.firewall_vmid}"

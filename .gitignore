@@ -38,3 +38,8 @@ Thumbs.db
 # Fileshare deployment credentials
 fileshare-api-key
 fileshare-admin.json
+
+# Shared-memory deployment credentials
+agentmemory-management.key
+backend-secret
+agentmemory-clients.json

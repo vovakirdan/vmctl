@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from vmctl.agentmemory.service import AgentmemoryService
 from vmctl.config import Configuration
 from vmctl.errors import PartialDeleteError, VmctlError
 from vmctl.fileshare.service import FileshareService
@@ -68,6 +69,14 @@ class DeleteVMService:
             if plan.mac and any(entry.mac == plan.mac for entry in self.reservations.read()):
                 self.reservations.preflight()
             metadata = decode_metadata(self.client.vm_config(plan.vm.vmid).get("description", ""))
+            if metadata.get("agentmemory_client_id"):
+                AgentmemoryService(self.config, self.client).revoke(
+                    metadata["agentmemory_client_id"], metadata.get("invocation", "")
+                )
+            elif "agentmemory" in metadata.get("system_features", "").split(","):
+                raise VmctlError(
+                    "Agentmemory ownership metadata is missing; revoke access manually before deleting"
+                )
             if metadata.get("fileshare_account"):
                 FileshareService(self.config, self.client).revoke(
                     metadata["fileshare_account"], metadata.get("invocation", "")

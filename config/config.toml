@@ -50,3 +50,17 @@ system_features_dir = "bootstrap/system"
 # firewall_vmid = 102
 # firewall_ipset = "vmctl-files-clients"
 # timeout_seconds = 15
+
+# Optional shared memory access. Deploy the service before enabling this section.
+# See docs/agentmemory.md. Never put tokens or private key contents in TOML.
+# [agentmemory]
+# endpoint = "https://10.210.0.107"
+# ca_file = "agentmemory-ca.crt"
+# management_host = "10.210.0.107"
+# management_port = 22
+# management_user = "vmctl-memory-admin"
+# management_key_file = "agentmemory-management.key" # Root-owned regular file, mode 0600.
+# management_known_hosts_file = "agentmemory-known-hosts" # Verified SSH host key.
+# firewall_vmid = 103
+# firewall_ipset = "vmctl-memory-clients"
+# timeout_seconds = 15

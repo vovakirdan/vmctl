@@ -51,6 +51,7 @@ class CloudInitRenderer:
         if set(versions) - {module.name for module in modules}:
             raise VmctlError("Version overrides must refer to selected modules")
         operations: list[str] = ["#!/bin/sh", "set -eu"]
+        post_system_commands: list[str] = []
         files: list[dict[str, Any]] = []
         installed: set[str] = set()
         targets: set[str] = set()
@@ -150,9 +151,15 @@ class CloudInitRenderer:
                         "content": script_path(self.config, script.file).read_text(),
                     }
                 )
-                operations.append(
-                    shlex.join(["sh", destination, *[expand(arg) for arg in script.args]])
+                command_line = shlex.join(
+                    ["sh", destination, *[expand(arg) for arg in script.args]]
                 )
+                # Reuse development Node when selected, otherwise install the private runtime.
+                if isinstance(module, SystemFeature) and module.name == "agentmemory":
+                    post_system_commands.append(command_line)
+                else:
+                    operations.append(command_line)
+        operations.extend(post_system_commands)
         files.append(
             {
                 "path": "/var/lib/vmctl/bootstrap/run.sh",
