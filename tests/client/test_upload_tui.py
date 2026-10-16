@@ -9,6 +9,7 @@ from threading import Event
 
 import pytest
 from test_tui import FakeOperations, app_for
+from textual.pilot import Pilot
 from textual.widgets import (
     Button,
     Checkbox,
@@ -84,6 +85,21 @@ class FakeUploader:
         return UploadResult(expected.vm.vmid, expected.destination, 2, 4096)
 
 
+async def preview_upload(pilot: Pilot[None], screen: UploadScreen, source: Path) -> UploadPreview:
+    """Dispatch input edits before the real preview button captures its generation."""
+    screen.query_one("#upload-source", Input).value = str(source)
+    await pilot.pause()
+    assert await pilot.click("#upload-plan")
+    await screen.vmctl.workers.wait_for_complete()
+    await pilot.pause()
+    assert screen.preview is not None, (
+        f"busy={screen.vmctl.busy}, stale={screen.vmctl.stale}, "
+        f"error={screen.query_one('#upload-error', Static).render()}, "
+        f"preview={screen.query_one('#upload-preview', Static).render()}"
+    )
+    return screen.preview
+
+
 def test_upload_read_only_preview_and_narrow_actions(tmp_path: Path) -> None:
     async def scenario() -> None:
         backend = FakeOperations()
@@ -105,12 +121,7 @@ def test_upload_read_only_preview_and_narrow_actions(tmp_path: Path) -> None:
             assert screen.query_one("#upload-user", Input).value == "vmadmin"
             assert screen.query_one("#upload-destination", Input).value == "~"
             assert not screen.query_one("#upload-overwrite", Checkbox).value
-            screen.query_one("#upload-source", Input).value = str(tmp_path / "project")
-            await pilot.pause()
-            screen.plan()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
-            assert screen.preview is not None
+            await preview_upload(pilot, screen, tmp_path / "project")
             assert "Guest target: /home/vmadmin/project" in str(
                 screen.query_one("#upload-preview", Static).render()
             )
@@ -172,14 +183,9 @@ def test_upload_confirmation_freezes_vmid_and_preview(tmp_path: Path) -> None:
             await pilot.pause()
             screen = app.screen
             assert isinstance(screen, UploadScreen)
-            screen.query_one("#upload-source", Input).value = str(tmp_path / "project")
             screen.query_one("#upload-user", Input).value = "other-user"
             screen.query_one("#upload-overwrite", Checkbox).value = True
-            await pilot.pause()
-            screen.plan()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
-            preview = screen.preview
+            preview = await preview_upload(pilot, screen, tmp_path / "project")
             screen.confirm()
             await pilot.pause()
             assert isinstance(app.screen, ConfirmScreen)
@@ -217,11 +223,7 @@ def test_editing_source_during_confirmation_invalidates_transfer(tmp_path: Path)
             await pilot.pause()
             screen = app.screen
             assert isinstance(screen, UploadScreen)
-            screen.query_one("#upload-source", Input).value = str(tmp_path / "one")
-            await pilot.pause()
-            screen.plan()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await preview_upload(pilot, screen, tmp_path / "one")
             screen.confirm()
             await pilot.pause()
             screen.query_one("#upload-source", Input).value = str(tmp_path / "two")
@@ -253,12 +255,7 @@ def test_upload_failure_invalidates_preview_without_retry(tmp_path: Path, uncert
             await pilot.pause()
             screen = app.screen
             assert isinstance(screen, UploadScreen)
-            screen.query_one("#upload-source", Input).value = str(tmp_path / "project")
-            await pilot.pause()
-            screen.plan()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
-            assert screen.preview is not None
+            await preview_upload(pilot, screen, tmp_path / "project")
             screen.execute(screen.preview)
             await app.workers.wait_for_complete()
             await pilot.pause()
@@ -290,16 +287,7 @@ def test_upload_cancel_stays_clickable_while_transfer_is_busy(tmp_path: Path) ->
             await pilot.pause()
             screen = app.screen
             assert isinstance(screen, UploadScreen)
-            screen.query_one("#upload-source", Input).value = str(tmp_path / "project")
-            await pilot.pause()
-            await pilot.click("#upload-plan")
-            await app.workers.wait_for_complete()
-            await pilot.pause()
-            assert screen.preview is not None, (
-                f"planned={len(uploader.planned)}, busy={app.busy}, stale={app.stale}, "
-                f"error={screen.query_one('#upload-error', Static).render()}, "
-                f"preview={screen.query_one('#upload-preview', Static).render()}"
-            )
+            await preview_upload(pilot, screen, tmp_path / "project")
             screen.execute(screen.preview)
             await pilot.pause()
             assert uploader.started.is_set()
