@@ -24,13 +24,22 @@ from textual.widgets import (
 )
 
 from vmctl.errors import UncertainOperationError, UnknownOutcomeError
+from vmctl.keys import PublicKeyRegistryStore
 from vmctl.models import CreateResult, VMDetails
-from vmctl.operations import ActionPreview, Catalog, DeletePreview, LifecycleAction, Operations
+from vmctl.operations import (
+    ActionPreview,
+    Catalog,
+    DeletePreview,
+    KeyExportResult,
+    LifecycleAction,
+    Operations,
+)
 from vmctl.transfer.models import UploadResult
 from vmctl.tui.create import CreateScreen
 from vmctl.tui.details import VMDetailsScreen
 from vmctl.tui.dialogs import ConfirmScreen, TextScreen
 from vmctl.tui.formatting import details_text, error_text, result_text
+from vmctl.tui.keys import KeyExportScreen, export_result_text
 from vmctl.tui.manage import ManageAction, ManageResult, ManageScreen
 from vmctl.tui.manage import result_text as manage_result_text
 from vmctl.tui.table import VMTable
@@ -52,6 +61,7 @@ class VmctlApp(App[None]):
     BINDINGS = [
         Binding("ctrl+n", "new", "New VM"),
         Binding("ctrl+r", "refresh", "Refresh"),
+        Binding("ctrl+k", "keys", "SSH keys"),
         Binding("/", "search", "Search"),
         Binding("q", "quit", "Quit"),
     ]
@@ -64,6 +74,7 @@ class VmctlApp(App[None]):
         public_key: Callable[[Path | None], str | None],
         read_only: bool = False,
         uploader: "UploadService | None" = None,
+        key_store: PublicKeyRegistryStore | None = None,
     ) -> None:
         super().__init__()
         self.backend, self.target, self.public_key, self.read_only = (
@@ -79,6 +90,7 @@ class VmctlApp(App[None]):
         self.last_success: datetime | None = None
         self.stale = False
         self.uploader = uploader
+        self.key_store = key_store
 
     def get_default_screen(self) -> Screen[None]:
         return DashboardScreen()
@@ -112,6 +124,7 @@ class VmctlApp(App[None]):
             yield Button("Edit", id="edit-action")
             yield Button("SPICE", id="spice-action")
             yield Button("Upload", id="upload-action")
+            yield Button("SSH keys", id="keys-action")
             yield Button("Start", id="start-action")
             yield Button("Shutdown", id="shutdown-action")
             yield Button("Reboot", id="reboot-action")
@@ -138,7 +151,7 @@ class VmctlApp(App[None]):
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action in {"search", "quit"} and isinstance(self.focused, (Input, Select)):
             return False
-        if action in {"new", "refresh", "search"} and len(self.screen_stack) > 1:
+        if action in {"new", "refresh", "search", "keys"} and len(self.screen_stack) > 1:
             return False
         return super().check_action(action, parameters)
 
@@ -312,6 +325,19 @@ class VmctlApp(App[None]):
                 or current is None
                 or bool(current and (current.vm.template or 9000 <= current.vm.vmid <= 9099))
             )
+        main.query_one("#keys-action", Button).disabled = (
+            self.busy
+            or self.stale
+            or current is None
+            or bool(
+                current
+                and (
+                    current.vm.template
+                    or 9000 <= current.vm.vmid <= 9099
+                    or current.vm.status != "running"
+                )
+            )
+        )
         main.query_one("#upload-action", Button).disabled = (
             self.uploader is None
             or self.busy
@@ -410,6 +436,8 @@ class VmctlApp(App[None]):
                 self.open_manage(cast(ManageAction, event.button.id.removesuffix("-action")))
             case "upload-action":
                 self.open_upload()
+            case "keys-action":
+                self.action_keys()
             case "start-action" | "shutdown-action" | "reboot-action":
                 action = {
                     "start-action": "start",
@@ -426,6 +454,35 @@ class VmctlApp(App[None]):
 
     def action_search(self) -> None:
         self.screen_stack[0].query_one("#search", Input).focus()
+
+    def action_keys(self) -> None:
+        current = self.current()
+        if (
+            current is None
+            or self.busy
+            or self.stale
+            or current.vm.template
+            or 9000 <= current.vm.vmid <= 9099
+            or current.vm.status != "running"
+            or len(self.screen_stack) > 1
+        ):
+            return
+        if self.key_store is None:
+            self.notify(
+                "No key registry configured. Use vmctl keys add NAME PATH --default.",
+                severity="warning",
+            )
+            return
+        try:
+            screen = KeyExportScreen(current, self.key_store)
+        except Exception as error:
+            self.notify(error_text(error), severity="error")
+            return
+        self.push_screen(screen, self.keys_exported)
+
+    def keys_exported(self, result: KeyExportResult | None) -> None:
+        if result is not None:
+            self.push_screen(TextScreen("SSH public keys exported", export_result_text(result)))
 
     def open_manage(self, action: ManageAction) -> None:
         current = self.current()

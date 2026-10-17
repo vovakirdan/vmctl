@@ -21,6 +21,7 @@ from vmctl.models import (
     CreateRequest,
     CreateResult,
     HardwareRequest,
+    KeyExportRequest,
     SpiceRequest,
     VMDetails,
     VMStats,
@@ -35,6 +36,8 @@ from vmctl.operations import (
     DeletePreview,
     HardwarePreview,
     HardwareResult,
+    KeyExportPreview,
+    KeyExportResult,
     LifecycleAction,
     Progress,
     SpicePreview,
@@ -56,9 +59,13 @@ from vmctl.protocol import (
     Event,
     HardwareExpected,
     HardwareParameters,
+    KeyExportExpected,
+    KeyExportMessage,
+    KeyExportParameters,
     PlanActionMessage,
     PlanActionParameters,
     PlanCloneMessage,
+    PlanKeyExportMessage,
     PlanSpiceMessage,
     PlanUpdateMessage,
     QueryMessage,
@@ -130,7 +137,7 @@ class SSHTransport:
         mutating = request.operation in MUTATING_OPERATIONS
         if isinstance(request, DeleteMessage | ActionMessage):
             vmid = request.parameters.vmid
-        elif isinstance(request, UpdateMessage | SpiceMessage):
+        elif isinstance(request, UpdateMessage | SpiceMessage | KeyExportMessage):
             vmid = request.parameters.expected.vm.vmid
         terminal: Event | None = None
         hello = False
@@ -271,11 +278,28 @@ class SSHOperations:
                     request.parameters.vmid
                     if isinstance(request, DeleteMessage | ActionMessage)
                     else request.parameters.expected.vm.vmid
-                    if isinstance(request, UpdateMessage | SpiceMessage)
+                    if isinstance(request, UpdateMessage | SpiceMessage | KeyExportMessage)
                     else event.vmid
                 )
                 raise UnknownOutcomeError(request.request_id, vmid) from exc
             raise ProtocolError("Invalid worker result schema") from exc
+
+    def plan_key_export(self, request: KeyExportRequest) -> KeyExportPreview:
+        return self._read(
+            PlanKeyExportMessage(
+                request_id=uuid.uuid4().hex, parameters=KeyExportParameters(**asdict(request))
+            ),
+            TypeAdapter(KeyExportPreview),
+        )
+
+    def export_keys(self, expected: KeyExportPreview, *, progress: Progress) -> KeyExportResult:
+        return self._read(
+            KeyExportMessage(
+                request_id=uuid.uuid4().hex, parameters=KeyExportExpected(expected=expected)
+            ),
+            TypeAdapter(KeyExportResult),
+            progress,
+        )
 
     def plan_create(self, request: CreateRequest) -> CreatePreview:
         message = CreateMessage(

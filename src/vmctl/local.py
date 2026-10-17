@@ -17,6 +17,7 @@ from vmctl.models import (
     CreateRequest,
     CreateResult,
     HardwareRequest,
+    KeyExportRequest,
     SpiceRequest,
     VMDetails,
     VMStats,
@@ -33,6 +34,8 @@ from vmctl.operations import (
     DeletePreview,
     HardwarePreview,
     HardwareResult,
+    KeyExportPreview,
+    KeyExportResult,
     LifecycleAction,
     Progress,
     SpicePreview,
@@ -49,6 +52,7 @@ from vmctl.services.lifecycle import LifecycleService
 from vmctl.services.metrics import vm_stats
 from vmctl.services.queries import info_vm, list_vms
 from vmctl.services.spice import SpiceService
+from vmctl.services.ssh_keys import KeyExportService
 from vmctl.utils.subprocess import SubprocessRunner
 
 Dependencies = Callable[
@@ -81,6 +85,13 @@ class LocalOperations:
         self.cloner = CloneVMService(self.config, self.client, self.reservations, allocator)
         self.hardware = HardwareService(self.config, self.client)
         self.spicer = SpiceService(self.config, self.client)
+        self.key_exporter = KeyExportService(self.config, self.client)
+
+    def plan_key_export(self, request: KeyExportRequest) -> KeyExportPreview:
+        return self.key_exporter.plan(request)
+
+    def export_keys(self, expected: KeyExportPreview, *, progress: Progress) -> KeyExportResult:
+        return self.key_exporter.export(expected, progress=progress)
 
     def plan_clone(self, request: CloneRequest) -> ClonePreview:
         return self.cloner.plan(request)

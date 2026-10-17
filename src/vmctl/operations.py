@@ -12,6 +12,7 @@ from vmctl.models import (
     CreateRequest,
     CreateResult,
     HardwareRequest,
+    KeyExportRequest,
     ModuleGroup,
     Resources,
     SpiceRequest,
@@ -101,6 +102,23 @@ class HardwareResult:
 
 
 @dataclass(frozen=True)
+class KeyExportPreview:
+    vm: VM
+    request: KeyExportRequest
+    fingerprint: str
+    notes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class KeyExportResult:
+    vm: VM
+    username: str
+    added: int
+    unchanged: int
+    fingerprints: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class SpicePreview:
     vm: VM
     request: SpiceRequest
@@ -156,6 +174,8 @@ class Catalog:
 
 
 class Operations(Protocol):
+    def plan_key_export(self, request: KeyExportRequest) -> KeyExportPreview: ...
+    def export_keys(self, expected: KeyExportPreview, *, progress: Progress) -> KeyExportResult: ...
     def plan_clone(self, request: CloneRequest) -> ClonePreview: ...
     def clone(
         self, expected: ClonePreview, *, request_id: str, progress: Progress

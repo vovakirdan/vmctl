@@ -1,10 +1,13 @@
 """Shared adapter and public-key setup for workstation frontends."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from vmctl.client_config import load_client_config
+from vmctl.errors import VmctlError
+from vmctl.keys import PublicKeyRegistryStore, merge_public_keys
 from vmctl.operations import Operations
 from vmctl.utils.ssh_keys import read_public_key
 
@@ -49,16 +52,43 @@ def build_operations(
     return SSHOperations(SSHTransport(connection))
 
 
-def load_public_key(settings: FrontendSettings, path: Path | None = None) -> str | None:
-    if path is not None:
-        return read_public_key(path.expanduser())
+def key_registry(settings: FrontendSettings) -> PublicKeyRegistryStore:
     if settings.local:
+        from vmctl.config import load_config
+
+        filename = load_config(settings.directory).host.ssh_keys_file
+    else:
+        filename = load_client_config(settings.directory).client.ssh_keys_file
+    path = Path(filename).expanduser()
+    if not path.is_absolute():
+        path = settings.directory / path
+    return PublicKeyRegistryStore(path)
+
+
+def load_public_key(
+    settings: FrontendSettings, path: Path | None = None, *, names: Sequence[str] | None = None
+) -> str | None:
+    # Preserve the local worker's deferred key loading when no registry is needed.
+    if settings.local and not (settings.directory / "config.toml").exists():
+        if names is not None:
+            raise VmctlError("Host configuration is required to select named SSH keys")
+        return read_public_key(path.expanduser()) if path is not None else None
+    store = key_registry(settings)
+    selected = store.load().default_keys if names is None else names
+    if settings.local and path is None and not selected:
         return None
-    config = load_client_config(settings.directory)
-    key_path = Path(config.client.ssh_key).expanduser()
-    if not key_path.is_absolute():
-        key_path = settings.directory / key_path
-    return read_public_key(key_path)
+    if path is None:
+        if settings.local:
+            from vmctl.config import load_config
+
+            filename = load_config(settings.directory).host.ssh_key
+        else:
+            filename = load_client_config(settings.directory).client.ssh_key
+        path = Path(filename).expanduser()
+        if not path.is_absolute():
+            path = settings.directory / path
+    primary = read_public_key(path.expanduser())
+    return merge_public_keys(primary, store.resolve(selected)) if selected else primary
 
 
 def target_label(settings: FrontendSettings) -> str:

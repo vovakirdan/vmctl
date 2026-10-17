@@ -22,8 +22,10 @@ from vmctl.protocol import (
     CreateMessage,
     DeleteMessage,
     Event,
+    KeyExportMessage,
     PlanActionMessage,
     PlanCloneMessage,
+    PlanKeyExportMessage,
     PlanSpiceMessage,
     PlanUpdateMessage,
     QueryMessage,
@@ -38,6 +40,10 @@ BackendFactory = Callable[[], Operations]
 
 
 def dispatch(request: Request, backend: Operations, progress: Callable[[str], None]) -> object:
+    if isinstance(request, PlanKeyExportMessage):
+        return backend.plan_key_export(request.parameters.to_domain())
+    if isinstance(request, KeyExportMessage):
+        return backend.export_keys(request.parameters.expected, progress=progress)
     if isinstance(request, PlanCloneMessage):
         return backend.plan_clone(request.parameters.to_domain())
     if isinstance(request, CloneMessage):

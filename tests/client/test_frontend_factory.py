@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 from vmctl import cli
 from vmctl.client_config import initialize_client_config
 from vmctl.frontend import FrontendSettings, build_operations, load_public_key, target_label
+from vmctl.keys import PublicKeyRegistryStore
 from vmctl.ssh import SSHOperations
 from vmctl.transfer.service import UploadService
 
@@ -58,6 +59,7 @@ def test_tui_launcher_reuses_client_configuration(
             public_key: Callable[[Path | None], str | None],
             read_only: bool,
             uploader: UploadService,
+            key_store: PublicKeyRegistryStore | None = None,
         ) -> None:
             self.arguments = (operations, target, read_only)
             assert uploader.operations is operations

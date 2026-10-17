@@ -11,9 +11,9 @@ Screen { background: $surface; }
 #details { height: auto; }
 .narrow #details-panel { display: none; }
 .narrow #vm-table { width: 1fr; }
-#main-actions { grid-size: 6 2; grid-gutter: 0 1; height: 6; margin: 0 1; }
+#main-actions { grid-size: 7 2; grid-gutter: 0 1; height: 6; margin: 0 1; }
 #main-actions Button { min-width: 0; width: 1fr; }
-.narrow #main-actions { grid-size: 4 3; height: 9; }
+.narrow #main-actions { grid-size: 4 4; height: 12; }
 ModalScreen { align: center middle; background: $background 60%; }
 .dialog { width: 68; max-width: 95%; height: auto; max-height: 90%; padding: 1 2; border: thick $primary; background: $surface; }
 .large-dialog { width: 90; height: 80%; }
@@ -22,6 +22,10 @@ ModalScreen { align: center middle; background: $background 60%; }
 .dialog Input { margin-bottom: 1; }
 .dialog VerticalScroll { height: 1fr; }
 #progress-log { height: 1fr; }
+#keys-scroll { height: 1fr; }
+#keys-scroll Checkbox { width: 1fr; height: 3; }
+#keys-error { color: $error; height: auto; }
+#keys-preview { border-left: solid $primary; padding-left: 1; }
 .buttons { height: 3; align-horizontal: right; margin-top: 1; }
 .buttons Button { margin-left: 1; }
 #create-title { height: 2; padding: 0 2; }

@@ -11,6 +11,8 @@ operation_timeout = 3600
 [client]
 # Public key installed in new guests, independent of the SSH connection identity.
 ssh_key = "~/.ssh/id_ed25519.pub"
+# Editable public-key registry, relative to this configuration directory.
+ssh_keys_file = "ssh-keys.toml"
 
 # Maximum wait for read-only Tab-completion SSH requests, in seconds.
 completion_timeout = 3

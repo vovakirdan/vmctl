@@ -30,6 +30,13 @@ class HardwareRequest:
 
 
 @dataclass(frozen=True)
+class KeyExportRequest:
+    reference: str
+    public_key: str
+    username: str | None = None
+
+
+@dataclass(frozen=True)
 class SpiceRequest:
     reference: str
     restart: bool = False

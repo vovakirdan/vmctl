@@ -16,12 +16,19 @@ from pydantic import (
 )
 
 from vmctl.errors import VmctlError
-from vmctl.models import CloneRequest, CreateRequest, HardwareRequest, SpiceRequest
+from vmctl.models import (
+    CloneRequest,
+    CreateRequest,
+    HardwareRequest,
+    KeyExportRequest,
+    SpiceRequest,
+)
 from vmctl.operations import (
     ActionPreview,
     ClonePreview,
     DeletePreview,
     HardwarePreview,
+    KeyExportPreview,
     LifecycleAction,
     SpicePreview,
 )
@@ -30,7 +37,7 @@ PROTOCOL_VERSION: Literal[1] = 1
 MAX_MESSAGE_BYTES = 1024 * 1024
 RequestID = Annotated[str, Field(pattern=r"^[0-9a-f]{32}$", min_length=32, max_length=32)]
 MUTATING_OPERATIONS = frozenset(
-    {"create", "delete", "start", "shutdown", "reboot", "clone", "update", "spice"}
+    {"create", "delete", "start", "shutdown", "reboot", "clone", "update", "spice", "export_keys"}
 )
 
 
@@ -108,6 +115,18 @@ class HardwareParameters(ReferenceParameters):
 
     def to_domain(self) -> HardwareRequest:
         return HardwareRequest(**self.model_dump())
+
+
+class KeyExportParameters(ReferenceParameters):
+    public_key: str = Field(min_length=16, max_length=65536)
+    username: str | None = Field(default=None, min_length=1, max_length=32)
+
+    def to_domain(self) -> KeyExportRequest:
+        return KeyExportRequest(**self.model_dump())
+
+
+class KeyExportExpected(WireModel):
+    expected: KeyExportPreview
 
 
 class SpiceParameters(ReferenceParameters):
@@ -200,6 +219,16 @@ class UpdateMessage(RequestBase):
     parameters: HardwareExpected
 
 
+class PlanKeyExportMessage(RequestBase):
+    operation: Literal["plan_key_export"] = "plan_key_export"
+    parameters: KeyExportParameters
+
+
+class KeyExportMessage(RequestBase):
+    operation: Literal["export_keys"] = "export_keys"
+    parameters: KeyExportExpected
+
+
 class PlanSpiceMessage(RequestBase):
     operation: Literal["plan_spice"] = "plan_spice"
     parameters: SpiceParameters
@@ -238,6 +267,8 @@ Request = Annotated[
     | CloneMessage
     | PlanUpdateMessage
     | UpdateMessage
+    | PlanKeyExportMessage
+    | KeyExportMessage
     | PlanSpiceMessage
     | SpiceMessage
     | DeleteMessage

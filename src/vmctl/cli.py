@@ -36,6 +36,7 @@ from vmctl.frontend import (
     FrontendSettings,
     build_operations,
     build_upload_service,
+    key_registry,
     load_public_key,
     target_label,
 )
@@ -60,6 +61,12 @@ config_app = typer.Typer(
     help="Initialize and validate configuration.", pretty_exceptions_show_locals=False
 )
 app.add_typer(config_app, name="config")
+keys_app = typer.Typer(
+    help="Register public SSH keys and add them to selected guests through the worker.",
+    no_args_is_help=True,
+    pretty_exceptions_show_locals=False,
+)
+app.add_typer(keys_app, name="keys")
 console = Console(markup=False)
 errors = Console(stderr=True, markup=False)
 
@@ -131,8 +138,12 @@ def upload_service(ctx: typer.Context, backend: Operations) -> UploadService:
     return build_upload_service(settings_for(ctx), backend)
 
 
-def public_key(ctx: typer.Context, path: Path | None) -> str | None:
-    return load_public_key(settings_for(ctx), path)
+def public_key(
+    ctx: typer.Context, path: Path | None, *, names: list[str] | None = None
+) -> str | None:
+    if names is None:
+        return load_public_key(settings_for(ctx), path)
+    return load_public_key(settings_for(ctx), path, names=names)
 
 
 @app.command(
@@ -190,6 +201,20 @@ def create(
             help="OpenSSH public-key file on this computer, overriding client.ssh_key. Never supply a private key."
         ),
     ] = None,
+    key: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--key",
+            help="Add a registered public key alongside the primary --ssh-key/client key. Repeat for multiple names. Replaces named defaults for this creation.",
+            autocompletion=completion.ssh_keys,
+        ),
+    ] = None,
+    no_extra_keys: Annotated[
+        bool,
+        typer.Option(
+            help="Use only the primary public-key file, omitting registered defaults. Cannot combine with --key."
+        ),
+    ] = False,
     with_modules: Annotated[
         str,
         typer.Option(
@@ -244,6 +269,8 @@ def create(
     ] = False,
 ) -> None:
     with present_errors():
+        if no_extra_keys and key:
+            raise VmctlError("--key and --no-extra-keys cannot be combined")
         backend = operations(ctx)
         modules = tuple(item.strip() for item in with_modules.split(",") if item.strip())
         request = CreateRequest(
@@ -263,7 +290,11 @@ def create(
                 item.strip() for item in without_system.split(",") if item.strip()
             ),
             no_desktop_password=no_desktop_password,
-            public_key=public_key(ctx, ssh_key),
+            public_key=(
+                public_key(ctx, ssh_key)
+                if key is None and not no_extra_keys
+                else public_key(ctx, ssh_key, names=[] if no_extra_keys else key)
+            ),
         )
         plan = backend.plan_create(request)
         if dry_run:
@@ -662,6 +693,7 @@ def tui(
             public_key=lambda path: load_public_key(settings, path),
             read_only=read_only,
             uploader=upload_service(ctx, backend),
+            key_store=key_registry(settings),
         ).run()
 
 
@@ -942,6 +974,143 @@ def bootstrap(
                 if template is None or template in item.templates:
                     table.add_row(item.name, item.description, ", ".join(item.templates) or "none")
             console.print(table)
+
+
+@keys_app.command(
+    "list", help="List registered public keys, fingerprints and creation defaults. Runs locally."
+)
+def keys_list(ctx: typer.Context) -> None:
+    from vmctl.keys import key_fingerprint
+
+    with present_errors():
+        registry = key_registry(settings_for(ctx)).load()
+        table = Table("Name")
+        table.add_column("Fingerprint", overflow="fold")
+        table.add_column("Default")
+        table.add_column("Description")
+        for name, entry in sorted(registry.keys.items()):
+            table.add_row(
+                name,
+                key_fingerprint(entry.public_key),
+                "yes" if name in registry.default_keys else "no",
+                entry.description,
+            )
+        console.print(table)
+        if not registry.keys:
+            console.print("No registered keys. Add one with: vmctl keys add NAME PUBLIC_KEY_FILE")
+
+
+@keys_app.command(
+    "add",
+    help="Register a named public-key file atomically. Private keys are rejected; no VM is changed.",
+)
+def keys_add(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(help="Registry name, for example iphone or workstation.")],
+    path: Annotated[Path, typer.Argument(help="Public-key file on this computer.")],
+    description: Annotated[str, typer.Option(help="Description displayed in key selection.")] = "",
+    default: Annotated[
+        bool,
+        typer.Option(
+            "--default",
+            help="Also include this key in new VMs by default, alongside the primary key.",
+        ),
+    ] = False,
+) -> None:
+    from vmctl.keys import key_fingerprint
+    from vmctl.utils.ssh_keys import read_public_key
+
+    with present_errors():
+        content = read_public_key(path.expanduser())
+        key_registry(settings_for(ctx)).add(name, content, description=description, default=default)
+        console.print(f"Registered public key {name}: {key_fingerprint(content)}")
+        if default:
+            console.print("Included in future VM creation defaults; existing VMs are unchanged")
+
+
+@keys_app.command("show", help="Print a registered public key. No private-key material is stored.")
+def keys_show(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(autocompletion=completion.ssh_keys)],
+) -> None:
+    with present_errors():
+        console.print(key_registry(settings_for(ctx)).resolve([name]), end="", soft_wrap=True)
+
+
+@keys_app.command(
+    "remove",
+    help="Remove a local registry entry and its default selection. Does not revoke existing VM access.",
+)
+def keys_remove(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(autocompletion=completion.ssh_keys)],
+    yes: Annotated[
+        bool, typer.Option("--yes", "-y", help="Skip registry removal confirmation.")
+    ] = False,
+) -> None:
+    with present_errors():
+        store = key_registry(settings_for(ctx))
+        store.resolve([name])
+        if not yes:
+            typer.confirm(
+                f"Remove {name} from the local registry? Existing VM access stays unchanged",
+                abort=True,
+            )
+        store.remove(name)
+        console.print("Removed registry entry only; existing VM access is unchanged")
+
+
+@keys_app.command(
+    "export",
+    help="Add selected public keys to a running Linux VM through its QEMU guest agent. Preserves existing keys; no guest SSH password or private key is needed.",
+)
+def keys_export(
+    ctx: typer.Context,
+    reference: Annotated[
+        str, typer.Argument(help="VM name or VMID.", autocompletion=completion.references)
+    ],
+    names: Annotated[
+        list[str],
+        typer.Argument(
+            help="One or more registered key names.", autocompletion=completion.ssh_keys
+        ),
+    ],
+    user: Annotated[
+        str | None,
+        typer.Option(
+            help="Existing non-root guest account; defaults to the configured guest user."
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool, typer.Option(help="Check VM/guest-agent eligibility without changing guest files.")
+    ] = False,
+    yes: Annotated[
+        bool, typer.Option("--yes", "-y", help="Skip granting SSH access confirmation.")
+    ] = False,
+) -> None:
+    from vmctl.models import KeyExportRequest
+
+    with present_errors():
+        content = key_registry(settings_for(ctx)).resolve(names)
+        backend = operations(ctx)
+        preview = backend.plan_key_export(KeyExportRequest(reference, content, user))
+        console.print(
+            f"VM {preview.vm.vmid} ({preview.vm.name}): add public keys {', '.join(names)}"
+        )
+        console.print(f"Guest account: {preview.request.username or 'configured guest user'}")
+        for note in preview.notes:
+            console.print(note)
+        if dry_run:
+            console.print("Dry run: no guest files or SSH access changed")
+            return
+        if not yes:
+            typer.confirm(
+                f"Grant SSH access on {preview.vm.name} using these public keys?", abort=True
+            )
+        result = backend.export_keys(preview, progress=console.print)
+        console.print(
+            f"Public keys exported to {result.username}@{result.vm.name}: {result.added} added, {result.unchanged} already authorized"
+        )
 
 
 @config_app.command("init", help="Install bundled defaults without overwriting existing files.")

@@ -34,6 +34,22 @@ def matches(choices: Iterable[tuple[str, str]], incomplete: str) -> Suggestions:
     )
 
 
+def ssh_keys(ctx: typer.Context, incomplete: str) -> Suggestions:
+    """Complete registered public-key names without contacting the worker."""
+    from vmctl.cli import settings_for
+    from vmctl.frontend import key_registry
+
+    return quietly(
+        lambda: matches(
+            (
+                (name, entry.description or "Registered SSH public key")
+                for name, entry in key_registry(settings_for(ctx)).load().keys.items()
+            ),
+            incomplete,
+        )
+    )
+
+
 def templates(ctx: typer.Context, incomplete: str) -> Suggestions:
     def suggest() -> Suggestions:
         return matches(

@@ -1,0 +1,5 @@
+# Named public SSH keys for guest access. Never put private keys in this file.
+# vmctl keys add iphone ~/iphone.pub --default
+default_keys = []
+
+[keys]

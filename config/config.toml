@@ -1,6 +1,8 @@
 # Example configuration for the local Proxmox host.
 username = "vmadmin"
 ssh_key = "/root/.ssh/id_ed25519.pub"
+# Editable public-key registry, relative to this configuration directory.
+ssh_keys_file = "ssh-keys.toml"
 spice_file = "spice.toml"
 lock_file = "/run/lock/vmctl.lock"
 lock_timeout = 30

@@ -88,6 +88,7 @@ class BootstrapConfig(StrictModel):
 class HostConfig(StrictModel):
     username: str = "vmadmin"
     ssh_key: str = "/root/.ssh/id_ed25519.pub"
+    ssh_keys_file: str = "ssh-keys.toml"
     lock_file: str = "/run/lock/vmctl.lock"
     lock_timeout: int = Field(default=30, gt=0)
     spice_file: str = "spice.toml"

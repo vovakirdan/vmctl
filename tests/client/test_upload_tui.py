@@ -110,7 +110,7 @@ def test_upload_read_only_preview_and_narrow_actions(tmp_path: Path) -> None:
             await app.workers.wait_for_complete()
             await pilot.pause()
             actions = list(app.screen.query("#main-actions Button"))
-            assert len(actions) == 12
+            assert len(actions) == 13
             assert all(0 <= button.region.y < button.region.bottom <= 23 for button in actions)
             assert not app.query_one("#upload-action", Button).disabled
             await pilot.click("#upload-action")

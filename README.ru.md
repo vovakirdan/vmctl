@@ -15,7 +15,7 @@ NAT, WireGuard и конфигурацию публичного bridge. Явно
 
 ## Быстрый старт (Linux / WSL)
 
-Установите одинаковую версию **0.9.1** клиента и серверного исполнителя.
+Установите одинаковую версию **0.10.0** клиента и серверного исполнителя.
 Если исполнитель ещё не установлен, сначала выполните [установку на сервере](#установка-исполнителя-на-хосте-proxmox)
 и проверьте [требования к хосту](#требования-к-хосту).
 
@@ -74,6 +74,57 @@ NAT, WireGuard и конфигурацию публичного bridge. Явно
 и показывают адрес RDP, не выводя пароль. Dry-run проверяет реальные требования
 хоста; при ошибке подключения конфигурации dnsmasq или типа содержимого snippets
 см. [устранение ошибок хранилища и dnsmasq](#устранение-ошибок-хранилища-и-dnsmasq).
+
+## Публичные SSH-ключи и доступ с телефона
+
+Один раз зарегистрируйте публичный ключ каждого устройства на рабочем компьютере.
+Приватный ключ остаётся на самом устройстве. Необязательный реестр `ssh-keys.toml`
+лежит рядом с `client.toml`; путь меняется через `client.ssh_keys_file`. В режиме
+`--local` используются каталог серверной конфигурации и параметр `ssh_keys_file`
+в `config.toml`. Поставляемый реестр пуст и не содержит пользовательских ключей.
+
+```sh
+vmctl keys add iphone ~/iphone.pub --description "Personal iPhone" --default
+vmctl keys list
+vmctl keys show iphone
+vmctl keys export memory-vm iphone --dry-run
+vmctl keys export memory-vm iphone --yes
+vmctl keys export files-vm workstation iphone --user vmadmin
+```
+
+Для экспорта нужна запущенная поддерживаемая Linux VM с включённым и доступным
+QEMU guest agent и существующий пользователь, отличный от root. Worker добавляет
+ключи через guest agent: пароль SSH, приватный ключ, публичный порт и перезагрузка
+не нужны. `authorized_keys` изменяется атомарно, старые ключи и ограничения
+сохраняются. Повторный экспорт не создаёт дубликатов. Dry-run проверяет VM и
+доступность агента; пользователь и его домашний каталог проверяются при выполнении.
+При потере ответа результат нужно проверить; повторить тот же экспорт безопасно.
+Версии клиента и worker должны совпадать.
+
+`--default` включает именованный ключ при создании будущих VM в CLI и TUI.
+Основной ключ из `client.ssh_key` или явного файла `--ssh-key` всегда сохраняется:
+
+```sh
+vmctl create work ubuntu-server small --key iphone
+vmctl create isolated debian small --no-extra-keys
+```
+
+Повторите `--key` для нескольких имён; явный выбор заменяет именованные ключи по
+умолчанию для этого создания. `--no-extra-keys` исключает их и несовместим с `--key`.
+Tab дополняет имена ключей локально. В TUI выберите запущенную VM и нажмите
+**SSH keys** (Ctrl+K), отметьте ключи, проверьте план и подтвердите экспорт.
+В режиме только чтения доступен лишь просмотр плана. `vmctl keys remove iphone`
+удаляет запись из реестра, но **не отзывает** уже выданный доступ внутри VM.
+
+Пример редактируемого реестра (подставьте настоящий публичный ключ):
+
+```toml
+default_keys = ["iphone"]
+
+[keys.iphone]
+public_key = "ssh-ed25519 AAAA... iphone"
+description = "Personal iPhone"
+```
 
 ## Установка клиента на рабочем компьютере
 
@@ -161,7 +212,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Каталог `/opt/vmctl` и серверная конфигурация должны принадлежать администратору.
 Абсолютный путь исполнителя позволяет не зависеть от PATH login shell.
 Вместо `.` команде `uv tool install` можно передать готовый wheel. Установите
-совместимые версии с обеих сторон; текущая версия **0.9.1**, версия протокола **1**.
+совместимые версии с обеих сторон; текущая версия **0.10.0**, версия протокола **1**.
 
 `vmctl --local config init` устанавливает серверные TOML-файлы, системные
 возможности, модули разработки и гостевые скрипты в `/etc/vmctl`. `client.toml`
@@ -357,7 +408,9 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 
 Вместо `.` с обеих сторон можно передать wheel из `dist/`. Переустановка и
 `config init` сохраняют существующие настройки; новые поля добавляются явно.
-Версия 0.9.1 добавляет отдельные ключи рабочих станций для общей agentmemory.
+Версия 0.10.0 добавляет именованные публичные SSH-ключи, ключи по умолчанию при
+создании VM и экспорт с подтверждением в CLI и TUI.
+Версия 0.9.1 добавила отдельные ключи рабочих станций для общей agentmemory.
 Версия 0.9.0 добавила общую agentmemory, индивидуальный отзыв доступа VM
 и настройку поддерживаемых агентов. См. [инструкцию](docs/agentmemory.ru.md).
 Версия 0.8.0 добавила обменник SFTPGo с явно включаемым доступом для VM,
@@ -385,8 +438,8 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 `/root/.local/bin/uv`; при необходимости укажите другой путь к uv:
 
 ```sh
-scp dist/vmctl-0.9.1-py3-none-any.whl pxmx:/tmp/
-ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.9.1-py3-none-any.whl --python 3.12 --force --reinstall'
+scp dist/vmctl-0.10.0-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.10.0-py3-none-any.whl --python 3.12 --force --reinstall'
 ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
 vmctl config validate
 vmctl tui --read-only
