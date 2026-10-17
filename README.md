@@ -844,9 +844,9 @@ plugins may need their remote endpoint reviewed; see the runbook below.
 
 The server remains private. Deleting a VM revokes its access and retains memory
 records. Cloning a VM with active memory credentials is blocked. Existing local
-agentmemory data and workstation agent connections are not migrated or changed.
+agentmemory data is never migrated automatically; workstation connections are configured separately.
 See the [English runbook](docs/agentmemory.md) ([Russian](docs/agentmemory.ru.md))
-for service details, verification, administration and the separate migration task.
+for service details, verification, administration and migration notes.
 
 ## Editable configuration and bootstrap
 

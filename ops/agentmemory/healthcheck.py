@@ -1,4 +1,4 @@
-"""Bounded systemd health check for an active agentmemory service."""
+"""Bounded liveness checks; CPU-heavy work must not trigger a service restart."""
 
 import json
 import stat
@@ -10,7 +10,7 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 SECRET_PATH = Path("/etc/agentmemory/backend-secret")
 SERVICE = "agentmemory.service"
-HEALTH_URL = "http://127.0.0.1:3111/agentmemory/health"
+LIVENESS_URL = "http://127.0.0.1:3111/agentmemory/livez"
 ROOT_UID = 0
 
 
@@ -38,7 +38,7 @@ def read_secret() -> str:
 
 
 def healthy(secret: str) -> bool:
-    request = Request(HEALTH_URL, headers={"Authorization": f"Bearer {secret}"})
+    request = Request(LIVENESS_URL, headers={"Authorization": f"Bearer {secret}"})
     # A host proxy configuration must not redirect private backend credentials.
     opener = build_opener(ProxyHandler({}))
     try:
@@ -49,7 +49,11 @@ def healthy(secret: str) -> bool:
             if len(raw) > 8192:
                 return False
             result = json.loads(raw)
-            return isinstance(result, dict) and result.get("status") == "healthy"
+            return (
+                isinstance(result, dict)
+                and result.get("status") == "ok"
+                and result.get("service") == "agentmemory"
+            )
     except (OSError, ValueError, HTTPError, URLError):
         return False
 

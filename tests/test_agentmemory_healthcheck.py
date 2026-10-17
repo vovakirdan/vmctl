@@ -77,14 +77,14 @@ def test_secret_is_in_header_only_and_proxy_is_disabled() -> None:
     response = MagicMock()
     response.__enter__.return_value = response
     response.status = 200
-    response.read.return_value = b'{"status":"healthy"}'
+    response.read.return_value = b'{"status":"ok","service":"agentmemory"}'
     opener = Mock()
     opener.open.return_value = response
     check.build_opener = Mock(return_value=opener)
     check.ProxyHandler = Mock(return_value="proxy-disabled")
     assert check.healthy("PRIVATE") is True
     request = opener.open.call_args.args[0]
-    assert request.full_url == "http://127.0.0.1:3111/agentmemory/health"
+    assert request.full_url == "http://127.0.0.1:3111/agentmemory/livez"
     assert request.get_header("Authorization") == "Bearer PRIVATE"
     check.ProxyHandler.assert_called_once_with({})
     check.build_opener.assert_called_once_with("proxy-disabled")
@@ -133,3 +133,18 @@ def test_units_have_bounded_periodic_checks_without_auto_start_dependencies() ->
     assert "Wants=agentmemory" not in service and "Requires=agentmemory" not in service
     assert "Restart=" not in service
     assert "OnBootSec=90s" in timer and "OnUnitActiveSec=30s" in timer
+
+
+def test_only_agentmemory_liveness_is_accepted() -> None:
+    check = module()
+    response = MagicMock()
+    response.__enter__.return_value = response
+    response.status = 200
+    opener = Mock()
+    opener.open.return_value = response
+    check.build_opener = Mock(return_value=opener)
+    for body in [b'{"status":"ok","service":"other"}', b'{"status":"critical"}']:
+        response.read.return_value = body
+        assert check.healthy("PRIVATE") is False
+    response.read.return_value = b'{"status":"ok","service":"agentmemory"}'
+    assert check.healthy("PRIVATE") is True

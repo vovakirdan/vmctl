@@ -8,8 +8,8 @@ this integration disabled.
 ## Service layout
 
 The configured deployment is `memory-vm`, VMID **103**, IP **10.210.0.107**:
-2 vCPUs, 4 GiB RAM, 20 GiB OS disk and a separate 100 GiB data disk mounted by
-UUID at `/srv/agentmemory`. The service runs as an unprivileged user under systemd;
+2 vCPUs, 8 GiB RAM, 20 GiB OS disk and a separate 100 GiB data disk mounted by
+UUID at `/srv/agentmemory`. Ballooning uses a 6 GiB minimum and 8 GiB maximum. The service runs as an unprivileged user under systemd;
 it must not start without the data disk. Proxmox autostart and VM protection are
 enabled. A single host does not provide high availability. Reusable deployment
 examples are in [the systemd unit](../ops/agentmemory/agentmemory.service),
@@ -168,15 +168,46 @@ systemd service status and journal. Do not print environment/secret files. Verif
 that the data mount is present and the service survives restart. A running
 process alone does not verify persistence, client authorization or retrieval.
 
-## Existing local records: separate migration
+## Existing local records and migration
 
-This release does not migrate or modify the existing local agentmemory 0.9.28,
-its files, MCP configuration or running processes. Migration is a separate task.
+The CLI never migrates a workstation automatically. The authorized deployment
+migration on 2026-10-17 copied the local 0.9.28 history to this server without
+switching workstation agents or deleting the source. Private source/configuration
+snapshots and a destination baseline are retained on the workstation and data disk.
 
-Use the upstream [export/import interface](https://github.com/rohitg00/agentmemory)
-on a copy first. Establish whether it covers every stored record type, IDs,
-relationships, projects and paths. Verify embedding compatibility and index
-rebuilding. If the new server already has records, test merging both histories
-rather than replacing its database. Compare counts and retrieval of known
-observations before switching clients, and preserve the original local data as
-a rollback copy. Do not copy a live database directory across versions blindly.
+The legacy full export disconnected its worker. Therefore the migration used a
+quiesced native snapshot, tested every scope through iii 0.22.1 in isolation,
+then compared durable records and tested retrieval before promotion. The original
+source used iii 0.11.2: this procedure is evidence for these exact versions, not a
+general promise that native directories can be copied across versions. New records
+created during testing were merged through the supported import interface. The
+verified snapshot contains **137 sessions, 15,872 observations, 1,845 memories
+and 27 lessons**; import provenance was added to the three new memories.
+Derived indexes were upgraded; graph links were preserved. Automatic graph
+compaction on boot is disabled, so graph maintenance remains a separate operation.
+The new application moves audit history into monthly scopes and discards old
+`index_persist` noise; the complete original audit remains in the private snapshot.
+
+A corpus with a 136 MiB graph response also exposed the SDK's default 100 MiB
+WebSocket response limit. After installing the pinned server package, run the
+reviewed [`tune_sdk.py`](../ops/agentmemory/tune_sdk.py) as root on `memory-vm`.
+It configures a bounded **256 MiB** internal limit for iii-sdk **0.22.1**, checks
+the exact connection implementation and refuses an unknown version/layout. It is
+idempotent; rerun after reinstalling the server dependency. This changes the
+loopback SDK connection, not an external HTTP upload limit. A different upstream
+SDK requires review. The liveness timer uses `/agentmemory/livez`: CPU/lag warnings
+in `/health` must not cause restart loops during legitimate indexing/search.
+
+For another migration, use the upstream
+[export/import interface](https://github.com/rohitg00/agentmemory) on a copy first.
+Check all record classes, IDs, relationships, paths, attachments and index coverage.
+Preserve both source and destination before merging; never overwrite an active
+store or assume a successful import proves complete retrieval.
+
+Workstation connection is a separate step: the current local agents still use
+local memory, and new local writes are not continuously replicated. Synchronize
+the final difference when switching. A WireGuard tunnel supplies a route, not
+permission: each computer needs its own revocable credential, approved source IP
+and pinned CA. The existing automatic provisioning handles VM identities; external
+workstation registration must be added explicitly instead of reusing a VM key or
+the internal backend secret.
