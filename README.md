@@ -958,7 +958,10 @@ The supplied features are `qemu-agent`, `desktop-rdp`, opt-in `fileshare` and op
 `fileshare` requires configured SFTPGo access on the worker and is never selected
 automatically. See [shared file exchange](#shared-file-exchange). `qemu-agent` applies
 to all templates by default and provides guest integration, CA certificates
-and sudo. `desktop-rdp` applies when `desktop = true` and depends on
+and sudo, plus tmux for persistent terminal sessions. Run `tmux new -As work`
+inside a VM to create or reattach to a session; it stays alive when SSH disconnects
+(but does not survive a VM reboot). No development `--with` selection is needed.
+`desktop-rdp` applies when `desktop = true` and depends on
 `qemu-agent`; shared dependencies are applied once. It does not add development
 toolchains or update the whole OS.
 

@@ -59,6 +59,31 @@ def test_capability_defaults(config: Configuration, name: str, expected: tuple[s
     assert tuple(f.name for f in selected) == expected
 
 
+@pytest.mark.parametrize("name", ["ubuntu-server", "ubuntu-desktop", "debian", "rocky", "alpine"])
+def test_default_system_bootstrap_installs_tmux(config: Configuration, name: str) -> None:
+    selection = select_bootstrap(config, CreateRequest("terminal", name, "small"))
+    assert not selection.modules
+    data = yaml.safe_load(
+        CloudInitRenderer(config).render(
+            config.template(name),
+            "terminal",
+            "public key",
+            (),
+            {},
+            system_features=selection.system_features,
+        )
+    )
+    script = next(
+        entry["content"]
+        for entry in data["write_files"]
+        if entry["path"] == "/var/lib/vmctl/bootstrap/run.sh"
+    )
+    install_command = {"debian": "apt-get install", "rhel": "dnf install", "alpine": "apk add"}[
+        config.template(name).family
+    ]
+    assert any(install_command in line and "tmux" in line.split() for line in script.splitlines())
+
+
 def test_feature_disable_and_dependency_deduplication(config: Configuration) -> None:
     features = load_system_features(config)
     template = config.template("ubuntu-desktop")

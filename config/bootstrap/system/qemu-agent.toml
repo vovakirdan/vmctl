@@ -1,17 +1,17 @@
 name = "qemu-agent"
-description = "Minimal guest integration without development toolchains"
+description = "Guest integration and persistent terminal sessions with tmux"
 supported_families = ["debian", "rhel", "alpine"]
 auto_apply = "always"
 
 [implementations.debian]
-packages = ["qemu-guest-agent", "ca-certificates", "sudo"]
+packages = ["qemu-guest-agent", "ca-certificates", "sudo", "tmux"]
 # The guest agent may be a static unit without an [Install] section.
 commands = [["systemctl", "start", "qemu-guest-agent"]]
 
 [implementations.rhel]
-packages = ["qemu-guest-agent", "ca-certificates", "sudo"]
+packages = ["qemu-guest-agent", "ca-certificates", "sudo", "tmux"]
 commands = [["systemctl", "start", "qemu-guest-agent"]]
 
 [implementations.alpine]
-packages = ["qemu-guest-agent", "qemu-guest-agent-openrc", "ca-certificates", "sudo"]
+packages = ["qemu-guest-agent", "qemu-guest-agent-openrc", "ca-certificates", "sudo", "tmux"]
 commands = [["rc-update", "add", "qemu-guest-agent", "default"], ["rc-service", "qemu-guest-agent", "start"]]
