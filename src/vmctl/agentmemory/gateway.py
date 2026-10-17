@@ -20,6 +20,7 @@ from urllib.request import Request, urlopen
 ROOT_UID = 0
 CONFIG = Path("/etc/agentmemory/gateway.json")
 CLIENT_ID = re.compile(r"vmctl-([1-8][0-9]{2,3}|9[0-9]{2})-([0-9a-f]{32})")
+WORKSTATION_ID = re.compile(r"workstation-([a-z][a-z0-9-]{0,31})-([0-9a-f]{32})")
 SECRET = re.compile(r"[A-Za-z0-9_-]{48,128}")
 
 
@@ -58,6 +59,11 @@ def private_json(path: Path) -> dict[str, Any]:
 
 
 def validate_identity(client_id: str, owner: str) -> None:
+    workstation = WORKSTATION_ID.fullmatch(client_id)
+    if workstation is not None:
+        if owner != f"workstation:{workstation[2]}":
+            raise GatewayError("Client ownership metadata is invalid")
+        return
     match = CLIENT_ID.fullmatch(client_id)
     if match is None or not 100 <= int(match[1]) < 9000 or owner != f"vmctl:{match[2]}":
         raise GatewayError("Client ownership metadata is invalid")

@@ -15,7 +15,7 @@ NAT, WireGuard и конфигурацию публичного bridge. Явно
 
 ## Быстрый старт (Linux / WSL)
 
-Установите одинаковую версию **0.9.0** клиента и серверного исполнителя.
+Установите одинаковую версию **0.9.1** клиента и серверного исполнителя.
 Если исполнитель ещё не установлен, сначала выполните [установку на сервере](#установка-исполнителя-на-хосте-proxmox)
 и проверьте [требования к хосту](#требования-к-хосту).
 
@@ -161,7 +161,7 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 Каталог `/opt/vmctl` и серверная конфигурация должны принадлежать администратору.
 Абсолютный путь исполнителя позволяет не зависеть от PATH login shell.
 Вместо `.` команде `uv tool install` можно передать готовый wheel. Установите
-совместимые версии с обеих сторон; текущая версия **0.9.0**, версия протокола **1**.
+совместимые версии с обеих сторон; текущая версия **0.9.1**, версия протокола **1**.
 
 `vmctl --local config init` устанавливает серверные TOML-файлы, системные
 возможности, модули разработки и гостевые скрипты в `/etc/vmctl`. `client.toml`
@@ -357,7 +357,8 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 
 Вместо `.` с обеих сторон можно передать wheel из `dist/`. Переустановка и
 `config init` сохраняют существующие настройки; новые поля добавляются явно.
-Версия 0.9.0 добавляет общую agentmemory, индивидуальный отзыв доступа VM
+Версия 0.9.1 добавляет отдельные ключи рабочих станций для общей agentmemory.
+Версия 0.9.0 добавила общую agentmemory, индивидуальный отзыв доступа VM
 и настройку поддерживаемых агентов. См. [инструкцию](docs/agentmemory.ru.md).
 Версия 0.8.0 добавила обменник SFTPGo с явно включаемым доступом для VM,
 созданием и отзывом индивидуальных учётных записей. См. [инструкцию](docs/fileshare.ru.md).
@@ -384,8 +385,8 @@ UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin uv tool install . --
 `/root/.local/bin/uv`; при необходимости укажите другой путь к uv:
 
 ```sh
-scp dist/vmctl-0.9.0-py3-none-any.whl pxmx:/tmp/
-ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.9.0-py3-none-any.whl --python 3.12 --force --reinstall'
+scp dist/vmctl-0.9.1-py3-none-any.whl pxmx:/tmp/
+ssh pxmx 'UV_TOOL_DIR=/opt/vmctl/tools UV_TOOL_BIN_DIR=/opt/vmctl/bin /root/.local/bin/uv tool install /tmp/vmctl-0.9.1-py3-none-any.whl --python 3.12 --force --reinstall'
 ssh pxmx '/opt/vmctl/bin/vmctl --local config init'
 vmctl config validate
 vmctl tui --read-only

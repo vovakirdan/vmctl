@@ -39,7 +39,7 @@ port forwards, WireGuard changes or public listening services on pxmx.
 
 ## Enable access for a new VM
 
-Update both vmctl client and worker to **0.9.0**, then validate configuration:
+Update both vmctl client and worker to **0.9.1**, then validate configuration:
 
 ```sh
 vmctl config validate
@@ -204,10 +204,47 @@ Check all record classes, IDs, relationships, paths, attachments and index cover
 Preserve both source and destination before merging; never overwrite an active
 store or assume a successful import proves complete retrieval.
 
-Workstation connection is a separate step: the current local agents still use
-local memory, and new local writes are not continuously replicated. Synchronize
-the final difference when switching. A WireGuard tunnel supplies a route, not
-permission: each computer needs its own revocable credential, approved source IP
-and pinned CA. The existing automatic provisioning handles VM identities; external
-workstation registration must be added explicitly instead of reusing a VM key or
-the internal backend secret.
+## Workstation connections
+
+This workstation's Codex and Claude Code now use the private HTTPS endpoint.
+The previous local server is stopped, with its database and configuration backups
+retained. No additional synchronization was performed during connection. Existing
+OpenCode settings are prepared, but its executable is not installed here.
+
+Each computer needs a route through WireGuard, its own revocable key, an approved
+source IP and the pinned CA. The gateway accepts an explicit administrative
+identity `workstation-<name>-<32-hex-id>` with owner `workstation:<32-hex-id>`.
+It enforces the same key-plus-exact-source-IP checks as VM clients. Registration
+and revocation use the existing restricted management SSH helper, not a public
+administration endpoint. Never reuse a VM identity or backend secret. If a peer's
+WireGuard address changes, the administrator must explicitly update its access.
+There is no automatic client enrollment command in this release.
+
+The configured local profile is `~/.local/share/vmctl/agentmemory/`:
+`access.json` and `ca.pem` are owner-only; `run` reads the key and launches the
+pinned official remote bridge or capture hook. Agent configuration stores only
+the launcher path and arguments. TLS is verified, no extra SSH tunnel is needed,
+and a missing connection fails instead of starting a local fallback memory.
+Configuration backups are under
+`~/.local/state/vmctl/connections/20261017-remote-memory/before/`.
+
+Restart existing Codex/Claude sessions to reload MCP and hooks. In Codex, review
+only the new agentmemory definitions in `/hooks`; existing trust state is
+preserved, and native capture is not claimed approved automatically. Inline
+Codex hooks remain in `config.toml` alongside existing hooks, without adding a
+second user-level `hooks.json`. Claude's duplicate agentmemory plugin capture is
+disabled in favor of one managed global hook set; unrelated plugins and MCP
+servers are preserved. OpenCode's stored server definition is updated without
+claiming its absent executable was tested.
+
+For a read-only local connection check:
+
+```sh
+codex mcp get agentmemory
+claude mcp get agentmemory
+```
+
+Live acceptance verified 54 tools, remote-only save/search, capture delivery,
+rejection of missing/wrong credentials and operation with the old local API
+stopped. These are connection checks; no paid agent prompt or native Codex trust
+approval was executed.

@@ -182,3 +182,25 @@ def test_reload_timeout_restores_both_files(
     assert state.read_bytes() == b"{}" and caddy.read_bytes() == b"original"
     assert commands.call_count == 3
     assert "PRIVATE-OUTPUT" not in str(failure.value)
+
+
+def test_workstation_has_its_own_identity_and_pinned_source(tmp_path: Path) -> None:
+    client_id = "workstation-zov-wsl-" + TOKEN
+    gateway.validate_identity(client_id, "workstation:" + TOKEN)
+    rendered = gateway.render(
+        settings(tmp_path),
+        {client_id: {"owner": "workstation:" + TOKEN, "address": "10.200.0.2", "secret": SECRET}},
+        BACKEND,
+    ).decode()
+    assert "remote_ip 10.200.0.2/32" in rendered
+    assert f'header Authorization "Bearer {SECRET}"' in rendered
+    with pytest.raises(gateway.GatewayError):
+        gateway.validate_identity(client_id, "vmctl:" + TOKEN)
+    with pytest.raises(gateway.GatewayError):
+        gateway.validate_identity(CLIENT, "workstation:" + TOKEN)
+
+
+@pytest.mark.parametrize("name", ["../escape", "a\nreverse_proxy", "", "x" * 33, "HOST"])
+def test_invalid_workstation_name_is_rejected(name: str) -> None:
+    with pytest.raises(gateway.GatewayError):
+        gateway.validate_identity("workstation-" + name + "-" + TOKEN, "workstation:" + TOKEN)
